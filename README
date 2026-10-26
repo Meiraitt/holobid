@@ -11,7 +11,8 @@ Argon2id/JWT e consulta do usuário autenticado estão implementados.
 Sessões persistidas, refresh, logout e autorização estão implementados.
 Carteira, depósitos simulados idempotentes, catálogo TCGdex e persistência de
 imagens também estão disponíveis; as rotas estão descritas abaixo.
-As operações de leilão entram nas próximas tasks. O frontend contém apenas a estrutura
+Publicação, vitrine e cancelamento de lotes sem lances estão implementados.
+Lances, liquidação e auditoria pública entram nas próximas tasks. O frontend contém apenas a estrutura
 TypeScript da BE-01; React/Vite entra na FE-01.
 
 Requisitos
@@ -214,8 +215,8 @@ repositories entram junto das respectivas regras de negócio.
 Os clients usam pools pequenos, conexão lazy e limites de espera/consulta;
 fecham as conexões no shutdown. Eles não disparam sondagens periódicas.
 A transação principal não inclui a base de auditoria: o protocolo de
-confirmação, HMAC e recuperação será implementado na BE-08. Ter as tabelas
-não significa que a auditoria de lances já esteja implementada.
+confirmação, HMAC e recuperação da BE-08 coordena commits separados. As
+primitivas internas já existem; lances e auditoria pública entram em BE-10/BE-12.
 
 O Compose sobe somente PostgreSQL local, com dois bancos e papéis distintos,
 sem permissão de conexão cruzada e porta exposta apenas em 127.0.0.1:55432.
@@ -334,7 +335,7 @@ Catalog and media (BE-07)
   JSON is bounded to 512 KiB; images to 2 MiB, with MIME and signature checks.
   CatalogImportService.prepare fetches outside transactions. persist receives a
   caller-owned transaction, creates an immutable snapshot and deduplicates image
-  bytes by SHA-256. BE-09 will use it to publish auctions; there is no public import
+  bytes by SHA-256. Auction publication uses it internally; there is no public import
   endpoint. Persisted provider enum-like value is TCGDEX; public source is tcgdex.
   GET /api/v1/media/:assetId is public and serves PostgreSQL bytes with the image
   MIME, immutable caching, ETag and conditional 304. It never calls the provider.
@@ -376,3 +377,39 @@ Audit primitives (BE-08)
   or rebuild anchors from the main database. No automatic discard of old intents.
   AuditService.reconcile is available for retries/recovery; scheduler wiring is
   BE-11 and the public history/audit endpoint is BE-12. No cloud provision occurred.
+
+Auction publication and lifecycle (BE-09)
+  POST /api/v1/auctions requires AUCTIONEER, Bearer and UUID v4 Idempotency-Key.
+  Body: {externalItemId, startingPriceCents, minimumIncrementCents, startsAt, endsAt}.
+  Amounts are positive integer cents, at most 100,000,000,000. Dates use an ISO
+  calendar date, time with seconds, up to three fractional digits and an explicit
+  timezone; values normalize to UTC. Past starts allow immediate publication; the
+  end must be after both the start and server time, rechecked after acquiring locks.
+  Only the external ID is accepted: titles, image URLs and seller IDs come from
+  authenticated/server data. Persist the card and image before preparing genesis.
+  Five new publication attempts/minute/auctioneer; successful replays bypass this.
+
+  Success: 201 AuctionDetail. An uncertain confirmation returns 202
+  {confirmation:"PENDING", operationId, auctionId}. Retry the identical body and
+  key to reconcile; never use a new key to recover the same intent. A missing main
+  record with a pending anchor remains pending. An anchored request fingerprint
+  rejects changed bodies even if the original primary record is missing. Before
+  downloading from TCGdex, check completed operations and pending intents.
+  Replays return the original 201 result; GET the detail for current state.
+
+  GET /api/v1/auctions is public. Optional status=SCHEDULED|LIVE|ENDED, limit=1..100
+  (default 20), and a signed cursor bound to the filter. Sort: createdAt/id descending.
+  Status derives from backend time: startsAt <= now < endsAt is LIVE. The exact
+  end instant is ENDED even before settlement. Cancelled lots are always excluded.
+  GET /api/v1/auctions/:id returns public details and local image/audit URLs.
+  No emails, bidder IDs, seller IDs, wallet data or provider image URLs are exposed.
+  auditIntegrity/confirmation guard canReceiveBids; an unverifiable auction cannot
+  accept bids. minimumNextBidCents is null when the money ceiling prevents a next
+  bid. Results are announced only after settlement, not merely because time elapsed.
+
+  POST /api/v1/auctions/:id/cancel requires the owner AUCTIONEER, {}, and UUID v4
+  Idempotency-Key. It locks and soft-cancels only an unended, confirmed lot without
+  bids. Repetition is safe; wrong owner/missing lot both return AUCTION_NOT_FOUND.
+  Cancelled public details are 404, while history, snapshots, media and the anchor
+  remain intact. Internal verification still works; the public audit route is BE-12.
+  There are no PATCH/DELETE, manual end, role-changing or tampering endpoints.

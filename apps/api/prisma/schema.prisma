@@ -155,6 +155,7 @@ model Auction {
   receipt               Receipt?
 
   @@unique([id, currentBidId])
+  @@index([createdAt, id])
   @@index([lifecycle, endsAt])
   @@index([sellerId, createdAt, id])
 }

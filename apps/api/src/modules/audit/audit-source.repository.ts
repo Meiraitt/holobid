@@ -21,6 +21,9 @@ export class AuditSourceRepository {
     const bids = await tx.bid.findMany({ where: { auctionId }, orderBy: { sequence: 'asc' } });
     return { ...auction, snapshot, image, bids };
   }
+  async requestHash(operationKey: string, tx: TransactionContext) {
+    return (await tx.idempotencyRecord.findUniqueOrThrow({ where: { id: operationKey }, select: { requestHash: true } })).requestHash;
+  }
   async proof(snapshot: AuditSnapshot, operationKey: string, tx: TransactionContext): Promise<string | null> {
     const operation = await tx.idempotencyRecord.findUnique({ where: { id: operationKey } });
     const resourceId = snapshot.bidCount === 0 ? snapshot.id : snapshot.currentBidId;

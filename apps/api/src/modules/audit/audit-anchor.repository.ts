@@ -12,7 +12,7 @@ function sameIntent(intent: AuditIntent, proposal: AuditProposal): boolean {
   return intent.id === proposal.attemptId && intent.auctionId === proposal.auctionId && intent.expectedSequence === (proposal.expected?.sequence ?? null)
     && intent.expectedHeadHash === (proposal.expected?.hash ?? null) && intent.nextSequence === proposal.next.sequence
     && intent.nextHeadHash === proposal.next.hash && intent.nextHeadMac === proposal.next.mac && intent.keyId === proposal.next.keyId
-    && intent.algorithmVersion === proposal.next.algorithmVersion && intent.proofHash === proposal.proofHash;
+    && intent.algorithmVersion === proposal.next.algorithmVersion && intent.proofHash === proposal.proofHash && intent.requestHash === (proposal.requestHash ?? null);
 }
 
 @Injectable()
@@ -45,7 +45,7 @@ export class AuditAnchorRepository {
       const data = { id: proposal.attemptId, auctionId: proposal.auctionId, operationKey: proposal.operationKey, expectedSequence: proposal.expected?.sequence,
         expectedHeadHash: proposal.expected?.hash, nextSequence: proposal.next.sequence, nextHeadHash: proposal.next.hash,
         nextHeadMac: proposal.next.mac, keyId: proposal.next.keyId, algorithmVersion: proposal.next.algorithmVersion,
-        proofHash: proposal.proofHash, state: 'PREPARED' as const, resolvedAt: null };
+        proofHash: proposal.proofHash, requestHash: proposal.requestHash ?? null, state: 'PREPARED' as const, resolvedAt: null };
       // Only a known rollback permits reusing this operation; unresolved intents are immutable.
       return existing ? tx.auditIntent.update({ where: { id: existing.id }, data: { ...data, expectedSequence: data.expectedSequence ?? null, expectedHeadHash: data.expectedHeadHash ?? null } })
         : tx.auditIntent.create({ data });
