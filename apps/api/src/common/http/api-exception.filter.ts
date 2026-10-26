@@ -3,6 +3,7 @@ import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logge
 import type { Response } from 'express';
 import type { ApiError } from '@holobid/contracts';
 import { ApiException } from './api.exception';
+import { RateLimitException } from './rate-limit.exception';
 
 const defaults: Record<number, { code: string; message: string }> = {
   400: { code: 'VALIDATION_ERROR', message: 'Invalid request.' },
@@ -39,6 +40,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
       this.logger.error({ event: 'http.error', requestId, statusCode: status, code: body.code });
     }
     if (!response.headersSent) {
+      if (exception instanceof RateLimitException) response.setHeader('Retry-After', exception.retryAfter);
       response.setHeader('X-Request-ID', requestId);
       response.status(status).json(body);
     }

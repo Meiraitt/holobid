@@ -7,6 +7,7 @@ import type { ApiEnvironment } from '../../config/environment';
 
 export interface AccessClaims {
   sub: string;
+  sid: string;
   role: UserRole;
   iat: number;
   exp: number;
@@ -23,8 +24,8 @@ export class AccessTokenService {
     this.key = Buffer.from(secret, 'base64url');
   }
 
-  sign(user: AuthUser): Promise<string> {
-    return this.jwt.signAsync({ sub: user.id, role: user.role }, {
+  sign(user: AuthUser, sessionId: string): Promise<string> {
+    return this.jwt.signAsync({ sub: user.id, sid: sessionId, role: user.role }, {
       secret: this.key, algorithm: 'HS256', issuer: this.issuer, audience: this.audience, expiresIn: 900,
     });
   }
@@ -34,7 +35,7 @@ export class AccessTokenService {
       const claims = await this.jwt.verifyAsync<AccessClaims>(token, {
         secret: this.key, algorithms: ['HS256'], issuer: this.issuer, audience: this.audience,
       });
-      if (!isUUID(claims.sub) || !['BIDDER', 'AUCTIONEER'].includes(claims.role) ||
+      if (!isUUID(claims.sid) || !isUUID(claims.sub) || !['BIDDER', 'AUCTIONEER'].includes(claims.role) ||
           !Number.isInteger(claims.iat) || !Number.isInteger(claims.exp) ||
           claims.exp - claims.iat !== 900 || claims.iat > Math.floor(Date.now() / 1000)) {
         throw new Error();

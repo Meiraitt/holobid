@@ -4,6 +4,7 @@ import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 
 export interface AuthenticatedRequest extends Request {
   user: AuthUser;
+  sessionId: string;
 }
 
 export const CurrentUser = createParamDecorator((_data: unknown, context: ExecutionContext): AuthUser =>

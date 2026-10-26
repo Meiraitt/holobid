@@ -8,7 +8,8 @@ Estado atual
 Monorepo com a base HTTP NestJS 11 e persistência PostgreSQL/Prisma: schemas,
 migrations, constraints e contexto transacional. Cadastro, login com
 Argon2id/JWT e consulta do usuário autenticado estão implementados.
-Sessões persistidas/refresh/logout e operações de leilão entram depois. O frontend contém apenas a estrutura
+Sessões persistidas, refresh, logout e autorização estão implementados.
+As operações de leilão entram nas próximas tasks. O frontend contém apenas a estrutura
 TypeScript da BE-01; React/Vite entra na FE-01.
 
 Requisitos
@@ -82,11 +83,13 @@ do deploy, não executadas automaticamente ao iniciar a API.
 Use health/live para sondagens periódicas do provedor: health/ready acessa
 os bancos e pode acordar instâncias Neon suspensas por inatividade.
 
-Autenticação (BE-04)
--------------------
+Autenticação e sessões (BE-04/BE-05)
+----------------------------------
 POST /api/v1/auth/register recebe {email, password}, responde 201 e cria
 somente BIDDER com carteira zero. POST /api/v1/auth/login responde 200.
-Ambos retornam {user: {id, email, role}, accessToken, expiresIn: 900}.
+Ambos retornam {user: {id, email, role}, accessToken, expiresIn: 900} e
+configuram o cookie de refresh. Usuário, carteira e sessão são gravados
+na mesma transação do cadastro. O token de refresh nunca aparece no JSON.
 GET /api/v1/auth/me exige Authorization: Bearer <accessToken> e devolve
 apenas id/email/role. O seed de leiloeiro será implementado na task de seed.
 
@@ -102,8 +105,58 @@ por IP entre cadastro/login; 429 inclui Retry-After. O estado expira em um
 minuto e é limitado a 10 mil entradas. Reiniciar a instância zera esses
 contadores. Forwarded/X-Forwarded-For não são confiados por padrão; o deploy
 deve configurar somente proxies conhecidos, sem habilitar trust proxy=true.
-Nesta task o JWT ainda não possui sid/refresh/logout. Esses recursos e a
-proteção CSRF de cookies são a BE-05, antes de publicar a autenticação.
+Cada JWT contém sid. Rotas protegidas verificam assinatura, expiração,
+issuer/audience e sessão ativa no PostgreSQL, usando o papel atual do
+usuário. @RequireRoles combina autenticação e autorização. Propriedade de
+lote é verificada pelo service/repository: lote alheio e inexistente retornam
+o mesmo 404. Não há novas rotas de negócio de leilão nesta task.
+
+POST /api/v1/auth/refresh recebe {} e o cookie; retorna 200 com AuthResponse
+e um novo cookie. A sessão dura no máximo 7 dias desde o login: renovação
+não prolonga esse prazo. Refresh tokens têm 32 bytes aleatórios; apenas
+SHA-256 é armazenado. Rotação usa atualização condicional em transação:
+duas chamadas simultâneas têm um único vencedor. Replay retorna 401 sem
+revogar a sessão válida nem limpar o cookie recém-renovado.
+
+POST /api/v1/auth/logout recebe {}, cookie e, quando disponível, Bearer
+access token. Retorna 204, revoga apenas essa sessão e limpa o cookie;
+repetir é inofensivo. JWTs dessa sessão deixam de funcionar imediatamente.
+O frontend deve serializar refresh/logout, enviar o Bearer no logout e
+ignorar resultados de refresh após iniciar logout. O Bearer permite
+identificar a sessão mesmo se seu cookie tiver acabado de ser rotacionado.
+Uma aba sem access token pode fazer logout apenas com o cookie atual.
+
+Todos os POSTs de autenticação exigem, inclusive em desenvolvimento:
+- Origin exatamente igual a WEB_ORIGIN;
+- Content-Type: application/json;
+- X-CSRF-Protection: 1.
+
+O cookie holobid_refresh usa HttpOnly, SameSite=Strict, Path=/api/v1/auth,
+Secure em produção e nenhum Domain. Configure WEB_ORIGIN com a origem
+pública do frontend (não a URL interna do backend). O cliente usa fetch
+com credentials: include; mantém o JWT só na memória.
+
+Na FE-01/FE-08 e no deploy, configurar o proxy Vite/rewrite Vercel de
+/api/v1/auth/:path* para <API_ORIGIN>/api/v1/auth/:path*, mantendo o caminho,
+Origin, cookies e Set-Cookie. Chamadas auth do navegador devem usar esse
+caminho relativo, na origem do frontend, para que SameSite=Strict funcione
+entre deploys separados. Demais chamadas Bearer podem usar VITE_API_URL.
+A URL real de destino será definida no deploy; nenhum rewrite de produção
+com endereço fictício foi publicado nesta etapa.
+
+Exemplo de login local (substituir por uma conta cadastrada):
+
+    curl -i http://localhost:3000/api/v1/auth/login \
+      -H 'Origin: http://localhost:5173' \
+      -H 'Content-Type: application/json' \
+      -H 'X-CSRF-Protection: 1' \
+      --data '{"email":"bidder@example.test","password":"your-password"}'
+
+SessionsService.authenticate expõe a identidade e o prazo de expiração
+para o futuro gateway. SessionRevocationEvents permite que BE-14 desconecte
+sockets após o commit do logout; falha no listener não desfaz a revogação.
+Sockets ainda não estão implementados. Sessões sobrevivem a reinícios,
+desde que o banco e JWT_SECRET permaneçam os mesmos.
 
 Convenções HTTP
 ---------------
@@ -120,7 +173,7 @@ Convenções HTTP
   sem converter implicitamente strings em valores numéricos.
 - CORS permite apenas WEB_ORIGIN. Chamadas sem Origin continuam possíveis
   para clientes HTTP e healthchecks. CORS não substitui autenticação/CSRF;
-  as regras específicas de autenticação serão adicionadas na task de auth.
+  os POSTs auth exigem Origin e o header CSRF mesmo para clientes HTTP.
 - Respostas HTTP usam Cache-Control: no-store nesta etapa; mídia imutável
   terá sua política própria quando for implementada.
 
@@ -178,6 +231,8 @@ apps/api/src/config                 Validação das variáveis de ambiente.
 apps/api/src/common/http            Middleware, filtro, exceção e pipe.
 apps/api/src/modules/health         Controller, service e módulo de saúde.
 apps/api/src/database               Clients, pools e contexto transacional.
+apps/api/src/modules/auth           Credenciais, sessões, cookies e guards.
+apps/api/src/modules/auctions       Consulta de propriedade (sem rotas ainda).
 apps/api/src/modules/users          Repository concreto de usuários.
 apps/api/src/modules/wallets        Repository concreto de carteiras.
 apps/api/prisma                     Schema/migrations principal e audit/.
@@ -242,3 +297,19 @@ Cada task possui branch, commit(s) e PR próprios, com títulos e descrições
 em inglês. Planos Markdown, .env reais, dependências e arquivos gerados
 ficam fora do Git. Este README e templates .env.example são versionados.
 O repositório começa privado e será público para a entrega.
+
+Wallets (BE-06)
+  GET /api/v1/wallet: authenticated user's totals, reservations, available cents,
+  version and serverTime. Both roles can read their own wallet.
+  POST /api/v1/wallet/deposits: BIDDER only, Bearer token, JSON {"amountCents": 1000}
+  and a UUID v4 Idempotency-Key header. Returns 201 {depositId, wallet}.
+  Simulated credits only: no payment provider or real money transfer.
+  Positive integer cents, at most 100,000,000,000 per operation and wallet total.
+  Wallet row locks serialize concurrent credits. Balance, ledger and idempotency
+  response commit together. Same user/key/body replays the original response;
+  another body returns 409 IDEMPOTENCY_KEY_REUSED. UUID casing is normalized.
+  Five new deposit attempts per minute/user (one API instance); 429 includes
+  Retry-After. Successful replays bypass the limiter. Failed transactions leave
+  no balance, ledger or idempotency change; rate limiting is deliberately in memory.
+  422 BALANCE_LIMIT_EXCEEDED leaves the wallet unchanged. Never send a userId.
+  Replayed wallet data reflects that operation; GET /wallet obtains current state.
