@@ -1,0 +1,21 @@
+{
+  "source": "https://tcgdex.dev",
+  "fetchedAt": "2026-10-26T19:04:59.160773+00:00",
+  "listUrl": "https://api.tcgdex.net/v2/en/cards?name=pikachu&image=notnull%3A&pagination%3Apage=1&pagination%3AitemsPerPage=2",
+  "cards": [
+    {
+      "id": "base1-58",
+      "url": "https://api.tcgdex.net/v2/en/cards/base1-58",
+      "imageUrl": "https://assets.tcgdex.net/en/base/base1/58/high.webp",
+      "mimeType": "image/webp",
+      "sha256": "41382f71a19c925afccee1f818c5311ca14216b629baa3b93c3be9e58acb8ed7"
+    },
+    {
+      "id": "base1-4",
+      "url": "https://api.tcgdex.net/v2/en/cards/base1-4",
+      "imageUrl": "https://assets.tcgdex.net/en/base/base1/4/high.webp",
+      "mimeType": "image/webp",
+      "sha256": "0a1e077b13319e2e50c63d54b3afdecabe57f6dfdd07377a6979efbea48fe254"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "category": "Pokemon",
+  "id": "base1-58",
+  "illustrator": "Mitsuhiro Arita",
+  "image": "https://assets.tcgdex.net/en/base/base1/58",
+  "localId": "58",
+  "name": "Pikachu",
+  "rarity": "Common",
+  "set": {
+    "id": "base1",
+    "name": "Base Set"
+  },
+  "hp": 40,
+  "types": [
+    "Lightning"
+  ],
+  "description": "When several of these Pokémon gather, their electricity can cause lightning storms."
+}
