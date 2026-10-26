@@ -1,6 +1,7 @@
 import { validateEnvironment } from '../src/config/environment';
 
 const databaseConfig = {
+  JWT_SECRET: Buffer.alloc(32, 7).toString('base64url'),
   DATABASE_URL: 'postgresql://main:secret@localhost/main',
   AUDIT_DATABASE_URL: 'postgresql://audit:secret@localhost/audit',
 };
@@ -30,6 +31,11 @@ describe('Environment configuration', () => {
     expect(() => validateEnvironment({ ...databaseConfig, WEB_ORIGIN: 'https://example.com',
       AUDIT_DATABASE_URL: 'postgresql://another:secret@localhost:5432/main' }))
       .toThrow('Invalid environment configuration: AUDIT_DATABASE_URL.');
+  });
+
+  it.each([undefined, '', 'short', 'x'.repeat(42)])('rejects an invalid JWT signing key without exposing it', (JWT_SECRET) => {
+    expect(() => validateEnvironment({ ...databaseConfig, WEB_ORIGIN: 'https://example.com', JWT_SECRET }))
+      .toThrow('Invalid environment configuration: JWT_SECRET.');
   });
 
   it('requires HTTPS in production and validates NODE_ENV', () => {

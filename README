@@ -6,8 +6,9 @@ Plataforma de leilões de cartas Pokémon, com catálogo TCGdex.
 Estado atual
 ------------
 Monorepo com a base HTTP NestJS 11 e persistência PostgreSQL/Prisma: schemas,
-migrations, constraints e contexto transacional. Autenticação e operações
-de leilão ainda serão implementadas. O frontend contém apenas a estrutura
+migrations, constraints e contexto transacional. Cadastro, login com
+Argon2id/JWT e consulta do usuário autenticado estão implementados.
+Sessões persistidas/refresh/logout e operações de leilão entram depois. O frontend contém apenas a estrutura
 TypeScript da BE-01; React/Vite entra na FE-01.
 
 Requisitos
@@ -40,6 +41,12 @@ Variáveis da API:
   Exemplo local: http://localhost:5173. Produção exige HTTPS.
 - PORT: inteiro de 1 a 65535; padrão 3000.
 - NODE_ENV: development, test ou production; padrão development.
+- JWT_SECRET: chave aleatória de 32 a 64 bytes, codificada em base64url.
+  Obrigatória, privada e estável entre reinicializações. Gere uma vez com:
+
+    node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
+
+  Salve o resultado apenas em apps/api/.env ou no secret do deploy.
 - DATABASE_URL: conexão PostgreSQL principal; obrigatória.
 - AUDIT_DATABASE_URL: conexão de auditoria em outro banco; obrigatória.
 - DIRECT_DATABASE_URL / DIRECT_AUDIT_DATABASE_URL: opcionais, usadas somente
@@ -47,8 +54,7 @@ Variáveis da API:
   Sem elas, os comandos de migration usam as respectivas URLs de runtime.
 
 Configuração inválida impede a inicialização e informa somente os nomes
-das variáveis inválidas, sem imprimir os valores. Autenticação ainda não
-exige configuração nesta etapa.
+das variáveis inválidas, sem imprimir os valores.
 VITE_* será consumido pelo frontend e nunca deve conter segredos.
 
 Executar a API
@@ -75,6 +81,29 @@ liveness continua respondendo. Migrations são um passo explícito antes
 do deploy, não executadas automaticamente ao iniciar a API.
 Use health/live para sondagens periódicas do provedor: health/ready acessa
 os bancos e pode acordar instâncias Neon suspensas por inatividade.
+
+Autenticação (BE-04)
+-------------------
+POST /api/v1/auth/register recebe {email, password}, responde 201 e cria
+somente BIDDER com carteira zero. POST /api/v1/auth/login responde 200.
+Ambos retornam {user: {id, email, role}, accessToken, expiresIn: 900}.
+GET /api/v1/auth/me exige Authorization: Bearer <accessToken> e devolve
+apenas id/email/role. O seed de leiloeiro será implementado na task de seed.
+
+Email é normalizado com trim/lowercase; senha aceita 10–128 caracteres,
+sem trim ou truncamento. Argon2id usa m=19456 KiB, t=2, p=1 e salt aleatório.
+JWT usa HS256, issuer holobid-api, audience holobid-web e expiração em
+15 minutos. Apenas claims necessários são assinados; hash/senha não saem
+nas respostas ou logs. Senha inválida e email inexistente usam o mesmo erro.
+O frontend deve manter o access token apenas na memória.
+
+A limitação em memória permite 5 tentativas/minuto por IP+email e 20/minuto
+por IP entre cadastro/login; 429 inclui Retry-After. O estado expira em um
+minuto e é limitado a 10 mil entradas. Reiniciar a instância zera esses
+contadores. Forwarded/X-Forwarded-For não são confiados por padrão; o deploy
+deve configurar somente proxies conhecidos, sem habilitar trust proxy=true.
+Nesta task o JWT ainda não possui sid/refresh/logout. Esses recursos e a
+proteção CSRF de cookies são a BE-05, antes de publicar a autenticação.
 
 Convenções HTTP
 ---------------
