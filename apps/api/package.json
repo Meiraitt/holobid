@@ -12,7 +12,9 @@
     "db:generate": "prisma generate && prisma generate --config prisma.audit.config.ts",
     "db:migrate": "prisma migrate deploy",
     "db:audit:migrate": "prisma migrate deploy --config prisma.audit.config.ts",
-    "test:db": "node scripts/test-database.mjs"
+    "test:db": "node scripts/test-database.mjs",
+    "audit:verify": "node dist/cli/audit-verify.js",
+    "audit:tamper-demo": "node scripts/test-database.mjs --tamper-demo"
   },
   "dependencies": {
     "@holobid/contracts": "0.0.0",

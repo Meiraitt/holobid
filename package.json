@@ -25,8 +25,10 @@
     "db:generate": "npm run db:generate --workspace=@holobid/api",
     "db:migrate": "npm run db:migrate --workspace=@holobid/api",
     "db:audit:migrate": "npm run db:audit:migrate --workspace=@holobid/api",
-    "test:db": "npm run build --workspace=@holobid/contracts && npm run test:db --workspace=@holobid/api",
-    "postinstall": "npm run db:generate"
+    "test:db": "npm run build:api && npm run test:db --workspace=@holobid/api",
+    "postinstall": "npm run db:generate",
+    "audit:verify": "npm run audit:verify --workspace=@holobid/api --",
+    "audit:tamper-demo": "npm run audit:tamper-demo --workspace=@holobid/api --"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

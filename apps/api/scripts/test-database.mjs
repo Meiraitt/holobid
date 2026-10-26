@@ -5,6 +5,10 @@ import process from 'node:process';
 import { URL, fileURLToPath } from 'node:url';
 import { setTimeout } from 'node:timers/promises';
 
+const demo = process.argv[2] === '--tamper-demo';
+if (process.argv.length > 2 && (!demo || process.argv.length !== 3)) throw new Error('Unsupported database runner arguments.');
+if (demo && process.env.NODE_ENV === 'production') throw new Error('Tamper demonstration is disabled in production.');
+
 const cwd = fileURLToPath(new URL('../', import.meta.url));
 const container = `holobid-test-${randomUUID()}`;
 let created = false;
@@ -59,7 +63,7 @@ try {
     run('npm', ['run', 'db:migrate'], { env });
     run('npm', ['run', 'db:audit:migrate'], { env });
   }
-  run('npm', ['exec', '--', 'jest', '--config', 'jest.database.config.mjs', '--runInBand'], { env });
+  run('npm', ['exec', '--', 'jest', '--config', 'jest.database.config.mjs', '--runInBand', ...(demo ? ['--runTestsByPath', 'test/database/public-audit.spec.ts', '--testNamePattern=isolated tamper demonstration'] : [])], { env });
 } catch (error) {
   process.stderr.write(`${error.message}\n`);
   process.exitCode = 1;
