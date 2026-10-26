@@ -1,3 +1,4 @@
+import { RealtimeModule } from './modules/realtime/realtime.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
 import { HistoryModule } from './modules/history/history.module';
 import { SettlementsModule } from './modules/settlements/settlements.module';
@@ -22,6 +23,7 @@ import { HealthModule } from './modules/health/health.module';
       validate: validateEnvironment,
     }),
     HealthModule,
+    RealtimeModule,
     AccountsModule,
     HistoryModule,
     AuthModule,

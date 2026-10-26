@@ -8,3 +8,4 @@ export type { BidInput, PublicBid, BidResult, BidPending } from './bid';
 export type { PublicReceipt } from './receipt';
 export type { BidHistory, PublicAudit } from './audit';
 export type { ParticipationState, MyAuctionState, Participation, ParticipationPage, OwnedAuctionPage, AuctioneerSummary } from './account';
+export type { AuctionEventReason, AuctionUpdated, CatalogUpdated, WalletUpdated, ParticipationUpdated, SubscriptionAck, ServerToClientEvents, ClientToServerEvents } from './realtime';

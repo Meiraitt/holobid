@@ -538,3 +538,31 @@ Private dashboards
   Lists use limit=20 (1-100), signed cursors bound to identity/filter/endpoint,
   and nextCursor=null at the end. All private endpoints require a live session
   and current database role; all responses have Cache-Control: no-store.
+
+
+Realtime notifications
+  Socket.IO 4.x attaches to the API HTTP server at /socket.io (not /api/v1).
+  One instance, default in-memory adapter, no Redis. HTTP remains authoritative
+  for all commands and financial transactions. Both polling and WebSocket require
+  the exact WEB_ORIGIN, including non-browser test clients via Origin header.
+  Connect with auth: { token: accessToken } for private notifications, or auth: {}
+  as a visitor. Never send tokens in query strings or choose user/session rooms.
+  JWT/session validation happens on connection and before private notifications;
+  logout disconnects its session sockets, and a timer disconnects at token expiry.
+  Refresh over HTTP, then reconnect with the new token and refetch private data.
+
+  auction.subscribe / auction.unsubscribe take { auctionId } and acknowledge
+  { ok: true, auctionVersion?, serverTime } or { ok: false, code }. Subscriptions
+  reject unknown/cancelled lots. Join first, await ACK, then GET the snapshot.
+  Everyone receives catalog.updated. Subscribers receive auction.updated with
+  BID_ACCEPTED, EXTENDED, STARTED, ENDED, CANCELLED or AUDIT_CONFIRMED. Private
+  wallet.updated and participation.updated contain only invalidation IDs/versions,
+  never balances, account IDs or emails. session.revoked and auth.expired end the
+  authenticated connection. Event types are exported from @holobid/contracts.
+  Notices follow committed changes; uncertain audit commits wait for recovery.
+  Delivery is best effort, not exactly once: reconnect, resubscribe and refetch.
+  Ignore older versions; equal versions can carry STARTED or EXTENDED notices.
+  Limits: 8 KiB packets, 20 auction rooms/socket, 60 subscription calls/minute,
+  1000 transport clients. Heartbeats do not query PostgreSQL.
+  References: https://socket.io/docs/v4/server-options/
+              https://socket.io/docs/v4/middlewares/

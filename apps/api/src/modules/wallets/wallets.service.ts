@@ -1,3 +1,4 @@
+import { WalletEvents } from './wallet-events';
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import type { WalletResponse, DepositResponse } from '@holobid/contracts';
@@ -12,7 +13,7 @@ import { presentWallet } from './wallet.presenter';
 
 @Injectable()
 export class WalletsService {
-  constructor(private readonly wallets: WalletsRepository, private readonly idempotency: IdempotencyService, private readonly limiter: DepositRateLimiter) {}
+  constructor(private readonly wallets: WalletsRepository, private readonly idempotency: IdempotencyService, private readonly limiter: DepositRateLimiter, private readonly events: WalletEvents) {}
 
   async get(userId: string): Promise<WalletResponse> {
     const wallet = await this.wallets.findByUserId(userId);
@@ -20,8 +21,9 @@ export class WalletsService {
     return presentWallet(wallet);
   }
 
-  deposit(userId: string, key: string, amountCents: number) {
-    return this.idempotency.execute<DepositResponse>({ userId, operation: 'POST /wallet/deposits', key, request: { amountCents } }, async tx => {
+  async deposit(userId: string, key: string, amountCents: number) {
+    let changed = false;
+    const result = await this.idempotency.execute<DepositResponse>({ userId, operation: 'POST /wallet/deposits', key, request: { amountCents } }, async tx => {
       // Replays bypass this limiter; a lost response can always be recovered.
       const retryAfter = this.limiter.consume(userId);
       if (retryAfter !== null) throw new RateLimitException(retryAfter);
@@ -33,7 +35,10 @@ export class WalletsService {
       const depositId = randomUUID();
       const updated = await this.wallets.credit(userId, amount, tx);
       await this.wallets.recordDeposit(userId, depositId, amount, tx);
+      changed = true;
       return { status: 201, resourceId: depositId, body: { depositId, wallet: presentWallet(updated) } };
     });
+    if (changed) this.events.publish(userId);
+    return result;
   }
 }
