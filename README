@@ -485,3 +485,31 @@ Automatic settlement and receipts (BE-11)
   codes return 404 RECEIPT_NOT_FOUND. Snapshot/image data remain local and work
   while TCGdex is unavailable. No seller/bidder IDs, emails or wallet values appear.
   imageUrl/auditUrl are API-relative paths; the public audit endpoint is BE-12.
+
+
+Public history and audit
+  GET /api/v1/auctions/:auctionId/bids and /audit accept limit (1-100,
+  default 20) and an opaque signed cursor. Bids are newest first; cursors
+  are bound to the endpoint and auction. New bids do not repeat older pages.
+  Both remain accessible for cancelled auctions. Public data uses per-auction
+  pseudonyms, never account IDs, emails, wallet balances or authentication MACs.
+  Audit recalculates the ENTIRE chain under the writer lock on every page.
+  version/checkedAt identify that request's snapshot; later pages may see a
+  newer version. A page is not a historical snapshot of the entire auction.
+  VERIFIED requires genesis, every bid and the independent checkpoint.
+  TAMPERED means a mismatch; INCOMPLETE means missing keys/anchors or pending
+  confirmation. Primary read failure returns 503. A surviving checkpoint with
+  missing primary history returns TAMPERED with null status/version.
+
+  After npm run build:api, run from the repository root:
+    npm run audit:verify -- --auction-id <uuid>
+  Configure the local environment in apps/api/.env or exported variables.
+  This read-only CLI starts no scheduler and performs no reconciliation.
+  Exit codes: 0 verified, 2 tampered, 3 incomplete, 1 invalid configuration.
+    npm run audit:tamper-demo
+  Requires Docker and installed development dependencies. Creates its own
+  disposable PostgreSQL container, ignores caller database URLs and .env,
+  migrates both databases, demonstrates mutation/restoration/tail deletion
+  through HTTP audit, then removes the container. No arbitrary fixture/URL
+  arguments are accepted. Both CLI commands refuse NODE_ENV=production.
+  There is no HTTP tamper, repair or destructive history endpoint.
