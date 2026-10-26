@@ -31,7 +31,7 @@ describe('Password authentication', () => {
   afterAll(async () => { await app.close(); });
 
   function post(path: string, body: unknown) {
-    return request(app.getHttpServer()).post(`/api/v1/auth/${path}`).send(body as object);
+    return request(app.getHttpServer()).post(`/api/v1/auth/${path}`).set('Origin', 'http://localhost:5173').set('X-CSRF-Protection', '1').send(body as object);
   }
 
   it('registers only a bidder with a zero wallet and an explicitly serialized response', async () => {
@@ -124,7 +124,7 @@ describe('Password authentication', () => {
     const result = await post('register', { email: email(), password }).expect(201);
     const jwt = app.get(JwtService);
     const now = Math.floor(Date.now() / 1000);
-    const claims = { sub: result.body.user.id, role: 'BIDDER', iat: now, exp: now + 900 };
+    const claims = { sub: result.body.user.id, sid: jwt.decode(result.body.accessToken).sid, role: 'BIDDER', iat: now, exp: now + 900 };
     const options = { secret: Buffer.from(process.env.JWT_SECRET!, 'base64url'), algorithm: 'HS256' as const, issuer: 'holobid-api', audience: 'holobid-web' };
     const tokens = [
       'invalid-token', result.body.accessToken + 'broken',

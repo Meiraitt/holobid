@@ -10,11 +10,17 @@ import { AccessTokenService } from './access-token.service';
 import { AccessTokenGuard } from './access-token.guard';
 import { AuthRateLimiter } from './auth-rate-limiter';
 import { AuthRateLimitGuard } from './auth-rate-limit.guard';
+import { SessionsRepository } from './sessions.repository';
+import { SessionsService } from './sessions.service';
+import { SessionRevocationEvents } from './session-revocation.events';
+import { AuthCsrfGuard } from './auth-csrf.guard';
+import { AuthCookiesService } from './auth-cookies.service';
+import { RolesGuard } from './roles.guard';
 
 @Module({
   imports: [DatabaseModule, UsersModule, WalletsModule, JwtModule.register({})],
   controllers: [AuthController],
-  providers: [AuthService, PasswordService, AccessTokenService, AccessTokenGuard, AuthRateLimiter, AuthRateLimitGuard],
-  exports: [AccessTokenGuard, AccessTokenService],
+  providers: [AuthService, PasswordService, AccessTokenService, AccessTokenGuard, AuthRateLimiter, AuthRateLimitGuard, SessionsRepository, SessionsService, SessionRevocationEvents, AuthCsrfGuard, AuthCookiesService, RolesGuard],
+  exports: [AccessTokenGuard, AccessTokenService, SessionsService, SessionRevocationEvents, RolesGuard],
 })
 export class AuthModule {}
