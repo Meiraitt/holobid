@@ -1,0 +1,12 @@
+{
+  "name": "@holobid/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts"
+}
