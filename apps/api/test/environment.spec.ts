@@ -1,6 +1,9 @@
 import { validateEnvironment } from '../src/config/environment';
 
 const databaseConfig = {
+  AUDIT_HMAC_SECRET: Buffer.alloc(32, 8).toString('base64url'),
+  AUDIT_PSEUDONYM_SECRET: Buffer.alloc(32, 9).toString('base64url'),
+  AUDIT_KEY_ID: 'v1',
   JWT_SECRET: Buffer.alloc(32, 7).toString('base64url'),
   DATABASE_URL: 'postgresql://main:secret@localhost/main',
   AUDIT_DATABASE_URL: 'postgresql://audit:secret@localhost/audit',

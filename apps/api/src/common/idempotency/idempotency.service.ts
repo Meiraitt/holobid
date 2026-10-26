@@ -4,12 +4,7 @@ import { DatabaseService, TransactionContext } from '../../database/database.ser
 import type { Prisma } from '../../generated/main/client';
 import { ApiException } from '../http/api.exception';
 
-type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
-function canonicalJson(value: Json): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
-  return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(value[key]!)}`).join(',')}}`;
-}
+import { canonicalJson, Json } from '../canonical-json';
 
 type OperationResult<T> = { status: number; body: T; resourceId?: string };
 

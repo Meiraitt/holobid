@@ -60,6 +60,7 @@ describe('Session lifecycle and authorization', () => {
   async function createApp(production = false) {
     const builder = Test.createTestingModule({ imports: [AppModule, AuthModule, AuctionsModule], controllers: [AuthorizationController] });
     if (production) builder.overrideProvider(ConfigService).useValue(new ConfigService({
+      AUDIT_HMAC_SECRET: process.env.AUDIT_HMAC_SECRET, AUDIT_PSEUDONYM_SECRET: process.env.AUDIT_PSEUDONYM_SECRET, AUDIT_KEY_ID: 'v1',
       NODE_ENV: 'production', WEB_ORIGIN: 'https://holobid.example', PORT: 3000,
       DATABASE_URL: process.env.DATABASE_URL, AUDIT_DATABASE_URL: process.env.AUDIT_DATABASE_URL, JWT_SECRET: process.env.JWT_SECRET,
     }));
