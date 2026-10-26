@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { DatabaseModule } from '../../database/database.module';
 import { UsersModule } from '../users/users.module';
-import { WalletsModule } from '../wallets/wallets.module';
+import { WalletPersistenceModule } from '../wallets/wallet-persistence.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { PasswordService } from './password.service';
@@ -18,7 +18,7 @@ import { AuthCookiesService } from './auth-cookies.service';
 import { RolesGuard } from './roles.guard';
 
 @Module({
-  imports: [DatabaseModule, UsersModule, WalletsModule, JwtModule.register({})],
+  imports: [DatabaseModule, UsersModule, WalletPersistenceModule, JwtModule.register({})],
   controllers: [AuthController],
   providers: [AuthService, PasswordService, AccessTokenService, AccessTokenGuard, AuthRateLimiter, AuthRateLimitGuard, SessionsRepository, SessionsService, SessionRevocationEvents, AuthCsrfGuard, AuthCookiesService, RolesGuard],
   exports: [AccessTokenGuard, AccessTokenService, SessionsService, SessionRevocationEvents, RolesGuard],

@@ -297,3 +297,19 @@ Cada task possui branch, commit(s) e PR próprios, com títulos e descrições
 em inglês. Planos Markdown, .env reais, dependências e arquivos gerados
 ficam fora do Git. Este README e templates .env.example são versionados.
 O repositório começa privado e será público para a entrega.
+
+Wallets (BE-06)
+  GET /api/v1/wallet: authenticated user's totals, reservations, available cents,
+  version and serverTime. Both roles can read their own wallet.
+  POST /api/v1/wallet/deposits: BIDDER only, Bearer token, JSON {"amountCents": 1000}
+  and a UUID v4 Idempotency-Key header. Returns 201 {depositId, wallet}.
+  Simulated credits only: no payment provider or real money transfer.
+  Positive integer cents, at most 100,000,000,000 per operation and wallet total.
+  Wallet row locks serialize concurrent credits. Balance, ledger and idempotency
+  response commit together. Same user/key/body replays the original response;
+  another body returns 409 IDEMPOTENCY_KEY_REUSED. UUID casing is normalized.
+  Five new deposit attempts per minute/user (one API instance); 429 includes
+  Retry-After. Successful replays bypass the limiter. Failed transactions leave
+  no balance, ledger or idempotency change; rate limiting is deliberately in memory.
+  422 BALANCE_LIMIT_EXCEEDED leaves the wallet unchanged. Never send a userId.
+  Replayed wallet data reflects that operation; GET /wallet obtains current state.
