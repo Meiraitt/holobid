@@ -5,19 +5,19 @@ Plataforma de leilões de cartas Pokémon, com catálogo TCGdex.
 
 Estado atual
 ------------
-A BE-01 prepara o monorepo, ferramentas e CI. Os arquivos src/index.ts são
-entradas vazias para validar a compilação de cada workspace. Ainda não há
-servidor HTTP, interface React, conexão com banco ou integração TCGdex.
-NestJS e React/Vite serão inicializados nas respectivas tasks.
+Monorepo com a base HTTP NestJS 11, configuração de ambiente, validação de
+DTOs, erros padronizados, correlação de requisições e endpoints de saúde.
+O frontend ainda contém somente a estrutura TypeScript da BE-01. React/Vite,
+banco de dados e funcionalidades de leilão entram nas próximas tasks.
 
 Requisitos
 ----------
-- Node.js 24.22.1 (versão fixada em .nvmrc).
-- npm 11.21.1 (versão fixada em packageManager).
+- Node.js 24.22.1 (fixado em .nvmrc).
+- npm 11.21.1 (fixado em packageManager).
 
-Use um gerenciador de versões ou instale as versões acima antes de rodar os
-comandos. Se já usa nvm, execute nvm install e nvm use na raiz do projeto.
-A instalação falha em versões incompatíveis para evitar diferenças com o CI.
+Use um gerenciador de versões ou instale essas versões antes dos comandos.
+Se já usa nvm, execute nvm install e nvm use na raiz. A instalação rejeita
+versões incompatíveis com os intervalos de engines do projeto.
 
 Preparação
 ----------
@@ -27,65 +27,116 @@ Na raiz:
     cp apps/api/.env.example apps/api/.env
     cp apps/web/.env.example apps/web/.env
 
-Os templates antecipam os endereços locais; serão consumidos quando as
-aplicações forem inicializadas. Não existem segredos reais nos exemplos.
-Variáveis VITE_* são públicas no navegador e nunca devem conter credenciais.
+O NestJS carrega apps/api/.env quando iniciado pelos scripts abaixo.
+Variáveis do processo têm precedência. NODE_ENV=test ignora o arquivo .env.
+
+Variáveis da API:
+- WEB_ORIGIN: obrigatória; origem exata do frontend, sem path ou barra final.
+  Exemplo local: http://localhost:5173. Produção exige HTTPS.
+- PORT: inteiro de 1 a 65535; padrão 3000.
+- NODE_ENV: development, test ou production; padrão development.
+
+Configuração inválida impede a inicialização e informa somente os nomes
+das variáveis inválidas, sem imprimir os valores. Ainda não são exigidas
+variáveis de banco ou autenticação, que serão introduzidas nessas tasks.
+VITE_* será consumido pelo frontend e nunca deve conter segredos.
+
+Executar a API
+--------------
+Desenvolvimento, com recompilação automática do código da API:
+
+    npm run dev:api
+
+Se modificar o pacote contracts, reinicie esse comando para recompilá-lo.
+Para executar o build:
+
+    npm run build:api
+    npm run start:api
+
+    curl http://localhost:3000/api/v1/health/live
+    curl http://localhost:3000/api/v1/health/ready
+
+GET /api/v1/health/live retorna 200 com {"status":"ok"}, sem acessar banco.
+GET /api/v1/health/ready retorna 200 com {"status":"ready"} depois da
+inicialização; retorna 503 se a aplicação estiver encerrando. Atualmente
+verifica apenas o ciclo de vida da aplicação. A sondagem real de banco
+será integrada na BE-03, quando a persistência existir.
+
+Convenções HTTP
+---------------
+- Prefixo /api/v1 e resposta de erro {code, message, details?, requestId}.
+- X-Request-ID gerado no servidor em cada requisição; também retornado nos
+  erros. Corpos, tokens, cookies e query strings não entram nos logs HTTP.
+- Logs HTTP usam uma lista fixa de campos: evento, requestId, método,
+  status e duração. Erros internos retornam mensagem genérica e são
+  registrados apenas com código/status/requestId, sem stack ou mensagem
+  potencialmente sensível. Não registrar objetos brutos de requests/erros
+  nas futuras funcionalidades. ApiException aceita apenas mensagens e
+  detalhes deliberadamente seguros para exposição pública.
+- DTOs usam class-validator: rejeitam campos desconhecidos e tipos inválidos,
+  sem converter implicitamente strings em valores numéricos.
+- CORS permite apenas WEB_ORIGIN. Chamadas sem Origin continuam possíveis
+  para clientes HTTP e healthchecks. CORS não substitui autenticação/CSRF;
+  as regras específicas de autenticação serão adicionadas na task de auth.
+- Respostas HTTP usam Cache-Control: no-store nesta etapa; mídia imutável
+  terá sua política própria quando for implementada.
 
 Estrutura
 ---------
-apps/api             API NestJS (inicialização na BE-02).
-apps/web             Frontend React/Vite (inicialização na FE-01).
-packages/contracts   Contratos de transporte compartilhados (BE-02).
+apps/api/src/config                 Validação das variáveis de ambiente.
+apps/api/src/common/http            Middleware, filtro, exceção e pipe.
+apps/api/src/modules/health         Controller, service e módulo de saúde.
+apps/api/test                       Testes de configuração e limites HTTP.
+apps/web                           Frontend React/Vite, previsto na FE-01.
+packages/contracts/src             Tipos públicos HTTP e saúde, sem NestJS.
 
-O repositório compartilha código e configuração, com builds independentes.
-O deploy planejado usa Northflank para a API e Vercel para o frontend.
-A configuração de hospedagem será adicionada nas tasks de deploy.
+Controllers recebem HTTP; services aplicam comportamento; repositories
+concretos entram junto da persistência na BE-03. O módulo de saúde não
+cria repository fictício. Banco e regras de leilão permanecem fora dele.
+O deploy planejado usa Northflank para a API e Vercel para o frontend,
+com builds independentes a partir do mesmo repositório.
 
 Verificações antes de cada commit
 --------------------------------
-Com Node.js e npm nas versões indicadas acima, execute na raiz:
-
     npm run check
     git diff --check
     git diff --cached --check
 
-O comando check executa lint, typecheck e build em sequência e interrompe
-na primeira falha. Corrija a falha e repita as verificações antes de criar
-o commit. Essa é uma etapa manual; não há hook Git instalado.
+check executa lint, typecheck, builds e testes da API, parando na primeira
+falha. Corrija o problema e repita antes de commitar; valide novamente se
+alterar código após os checks. Essa é uma etapa manual, sem hook instalado.
 
 Na primeira instalação, após alterar dependências/lockfile e antes de
-concluir cada PR, execute npm ci antes de npm run check para validar uma
-instalação limpa. Os comandos individuais continuam disponíveis:
+concluir cada PR, rode npm ci antes de npm run check. Comandos individuais:
 
     npm run lint
     npm run typecheck
     npm run build
-
-À medida que testes forem implementados, inclua os checks automatizados
-adequados em npm run check e execute também os cenários manuais da task.
-Testes de integração usam banco isolado, nunca dados de produção. Registre
-na descrição do PR quais verificações passaram e eventuais limitações.
-
-Build separado, incluindo os contratos compartilhados:
-
+    npm run test:api
     npm run build:api
     npm run build:web
 
-Nesta etapa, build compila somente os arquivos TypeScript de estrutura.
-O frontend passará a usar Vite na FE-01. Não há comando dev nem testes de
-negócio antes das tasks que adicionam essas funcionalidades.
+Os testes Jest/Supertest usam a configuração HTTP real em uma aplicação de
+teste, sem banco e sem serviços externos. As rotas _test existem somente
+nos testes; não são registradas na aplicação executável. Testes financeiros
+e de persistência serão adicionados nas respectivas tasks e usarão banco
+isolado. Registre no PR os resultados reais e os cenários manuais da task.
 
-O GitHub Actions usa npm ci e o mesmo npm run check em PRs para main e
-em pushes para main. Enquanto a execução remota estiver indisponível,
-a validação local antes de cada commit permanece obrigatória. Ela executa
-as mesmas verificações, mas não reproduz o ambiente Linux do runner.
+O GitHub Actions chama npm ci e o mesmo npm run check. Enquanto sua execução
+estiver indisponível, a validação local permanece obrigatória; ela não
+reproduz o ambiente Linux do runner.
+
+Dependências
+------------
+NestJS 11 mantém compatibilidade com CommonJS. O override de multer para
+2.5.0 corrige a dependência 2.4.0 do adapter Express; reavaliar esse override
+quando o adapter incorporar a correção. Referência:
+https://github.com/advisories/GHSA-q7qp-rjg7-q26m
+Não há upload de arquivos neste escopo.
 
 Contribuição
 ------------
-Cada task possui uma branch e um PR próprio, com commits e descrição em
-inglês. As verificações pertinentes devem passar antes de cada commit;
-repita-as se fizer alterações depois da validação.
-
-Planos locais em Markdown, arquivos .env, dependências e artefatos gerados
-ficam fora do Git. Este README sem extensão e os templates .env.example
-são versionados. O repositório começa privado e será público na entrega.
+Cada task possui branch, commit(s) e PR próprios, com títulos e descrições
+em inglês. Planos Markdown, .env reais, dependências e arquivos gerados
+ficam fora do Git. Este README e templates .env.example são versionados.
+O repositório começa privado e será público para a entrega.
