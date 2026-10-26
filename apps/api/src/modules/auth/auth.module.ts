@@ -21,6 +21,6 @@ import { RolesGuard } from './roles.guard';
   imports: [DatabaseModule, UsersModule, WalletPersistenceModule, JwtModule.register({})],
   controllers: [AuthController],
   providers: [AuthService, PasswordService, AccessTokenService, AccessTokenGuard, AuthRateLimiter, AuthRateLimitGuard, SessionsRepository, SessionsService, SessionRevocationEvents, AuthCsrfGuard, AuthCookiesService, RolesGuard],
-  exports: [AccessTokenGuard, AccessTokenService, SessionsService, SessionRevocationEvents, RolesGuard],
+  exports: [PasswordService, AccessTokenGuard, AccessTokenService, SessionsService, SessionRevocationEvents, RolesGuard],
 })
 export class AuthModule {}

@@ -23,8 +23,8 @@ export class AuctionHarness {
   now = new Date();
   seller!: Account;
   source = { get: jest.fn(async (_url: string, kind: string) => kind === 'image'
-    ? { bytes: readFileSync(join(__dirname, '../fixtures/tcgdex/base1-58.webp')), mimeType: 'image/webp' }
-    : { bytes: readFileSync(join(__dirname, '../fixtures/tcgdex/base1-58.json')), mimeType: 'application/json' }) };
+    ? { bytes: readFileSync(join(__dirname, '../../fixtures/tcgdex/base1-58.webp')), mimeType: 'image/webp' }
+    : { bytes: readFileSync(join(__dirname, '../../fixtures/tcgdex/base1-58.json')), mimeType: 'application/json' }) };
   async boot() {
     const module = await Test.createTestingModule({ imports: [AppModule] }).overrideProvider(CatalogHttpService).useValue(this.source).compile();
     this.app = module.createNestApplication<NestExpressApplication>({ logger: false }); configureApp(this.app);

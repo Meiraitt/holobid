@@ -7,7 +7,7 @@ import { mapCard, mapSummary } from '../src/modules/catalog/catalog-mapper';
 import { validateImage } from '../src/modules/media/image-validation';
 import { SourceError } from '../src/modules/catalog/catalog.errors';
 
-const fixtures = join(__dirname, 'fixtures/tcgdex');
+const fixtures = join(__dirname, '../fixtures/tcgdex');
 const card = JSON.parse(readFileSync(join(fixtures, 'base1-58.json'), 'utf8'));
 const brief = JSON.parse(readFileSync(join(fixtures, 'list.json'), 'utf8'));
 const image = readFileSync(join(fixtures, 'base1-58.webp'));

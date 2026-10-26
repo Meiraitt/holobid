@@ -10,6 +10,10 @@ const databaseConfig = {
 };
 
 describe('Environment configuration', () => {
+  it('requires an explicit boolean demo mode', () => {
+    expect(validateEnvironment({ ...databaseConfig, WEB_ORIGIN: 'http://localhost:5173', DEMO_MODE: 'true' }).DEMO_MODE).toBe(true);
+    expect(() => validateEnvironment({ ...databaseConfig, WEB_ORIGIN: 'http://localhost:5173', DEMO_MODE: 'yes' })).toThrow('DEMO_MODE');
+  });
   it('requires an explicit frontend origin without exposing values', () => {
     expect(() => validateEnvironment({ ...databaseConfig })).toThrow('WEB_ORIGIN');
     expect(() => validateEnvironment({ ...databaseConfig, WEB_ORIGIN: 'https://user:private-password@example.com' }))
@@ -45,6 +49,6 @@ describe('Environment configuration', () => {
     expect(() => validateEnvironment({ ...databaseConfig, NODE_ENV: 'production', WEB_ORIGIN: 'http://example.com' })).toThrow('WEB_ORIGIN');
     expect(() => validateEnvironment({ ...databaseConfig, NODE_ENV: 'invalid', WEB_ORIGIN: 'https://example.com' })).toThrow('NODE_ENV');
     expect(validateEnvironment({ ...databaseConfig, NODE_ENV: 'production', PORT: '8080', WEB_ORIGIN: 'https://example.com' }))
-      .toEqual({ ...databaseConfig, NODE_ENV: 'production', PORT: 8080, WEB_ORIGIN: 'https://example.com' });
+      .toEqual({ ...databaseConfig, NODE_ENV: 'production', PORT: 8080, DEMO_MODE: false, WEB_ORIGIN: 'https://example.com' });
   });
 });

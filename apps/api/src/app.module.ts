@@ -1,3 +1,4 @@
+import { DemoModule } from './modules/demo/demo.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
 import { HistoryModule } from './modules/history/history.module';
@@ -31,6 +32,7 @@ import { HealthModule } from './modules/health/health.module';
     AuctionsModule,
     BidsModule,
     SettlementsModule,
+    DemoModule,
     WalletsModule,
     CatalogModule,
   ],
