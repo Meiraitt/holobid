@@ -28,7 +28,8 @@
     "test:db": "npm run build:api && npm run test:db --workspace=@holobid/api",
     "postinstall": "npm run db:generate",
     "audit:verify": "npm run audit:verify --workspace=@holobid/api --",
-    "audit:tamper-demo": "npm run audit:tamper-demo --workspace=@holobid/api --"
+    "audit:tamper-demo": "npm run audit:tamper-demo --workspace=@holobid/api --",
+    "db:seed": "npm run build:api && npm run db:seed --workspace=@holobid/api"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

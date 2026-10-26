@@ -1,6 +1,7 @@
 export interface ApiEnvironment {
   NODE_ENV: 'development' | 'test' | 'production';
   PORT: number;
+  DEMO_MODE: boolean;
   WEB_ORIGIN: string;
   DATABASE_URL: string;
   AUDIT_DATABASE_URL: string;
@@ -23,6 +24,9 @@ export function validateEnvironment(raw: Record<string, unknown>): ApiEnvironmen
   if (typeof nodeEnv !== 'string' || !['development', 'test', 'production'].includes(nodeEnv)) {
     errors.push('NODE_ENV');
   }
+
+  const demoMode = raw.DEMO_MODE ?? 'false';
+  if (!['true', 'false', true, false].includes(demoMode as string | boolean)) errors.push('DEMO_MODE');
 
   const rawPort = raw.PORT ?? '3000';
   const port = /^\d+$/.test(String(rawPort)) ? Number(rawPort) : Number.NaN;
@@ -79,6 +83,7 @@ export function validateEnvironment(raw: Record<string, unknown>): ApiEnvironmen
   return {
     NODE_ENV: nodeEnv as ApiEnvironment['NODE_ENV'],
     PORT: port,
+    DEMO_MODE: demoMode === true || demoMode === 'true',
     WEB_ORIGIN: origin as string,
     DATABASE_URL: raw.DATABASE_URL as string,
     AUDIT_DATABASE_URL: raw.AUDIT_DATABASE_URL as string,

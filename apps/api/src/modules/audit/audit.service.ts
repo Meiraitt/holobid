@@ -59,6 +59,7 @@ export class AuditService {
       return await this.database.transaction(async tx => {
         const snapshot = await this.lockedSnapshot(intent.auctionId, tx);
         const current = await this.anchors.findOperation(operationKey);
+        if (current?.id === intent.id && current.state === 'COMMITTED') return 'CONFIRMED';
         if (!current || current.id !== intent.id || current.state !== 'PREPARED') return 'PENDING';
         if (!snapshot || !current.proofHash || this.chain.verify(snapshot).integrity !== 'VERIFIED') return 'PENDING';
         if (snapshot.bidCount !== current.nextSequence || snapshot.auditHead !== current.nextHeadHash || snapshot.auditMac !== current.nextHeadMac ||

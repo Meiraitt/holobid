@@ -17,7 +17,7 @@ import { MediaRepository } from '../../src/modules/media/media.repository';
 import { snapshotHead, AuditSnapshot } from '../../src/modules/audit/audit.types';
 
 if (process.env.HOLOBID_ISOLATED_DATABASE_TEST !== '1') throw new Error('Run npm run test:db.');
-const bytes = readFileSync(join(__dirname, '../fixtures/tcgdex/base1-58.webp'));
+const bytes = readFileSync(join(__dirname, '../../fixtures/tcgdex/base1-58.webp'));
 
 describe('Authenticated audit and cross-database recovery', () => {
   let app: INestApplicationContext, db: DatabaseService, auditDb: AuditDatabaseService;
@@ -178,6 +178,15 @@ describe('Authenticated audit and cross-database recovery', () => {
     const transaction = db.transaction.bind(db);
     jest.spyOn(db, 'transaction').mockImplementationOnce(async work => { await transaction(work); throw new Error('Lost main acknowledgement'); });
     const second = await publish(); expect(second.confirmation).toBe('PENDING'); expect(await audit.reconcile(second.operationKey)).toBe('CONFIRMED');
+  });
+  it('recognizes another worker confirming an intent while reconciliation waits', async () => {
+    jest.spyOn(anchors, 'commit').mockRejectedValueOnce(new Error('Anchor acknowledgement unavailable'));
+    const created = await publish(); expect(created.confirmation).toBe('PENDING');
+    const find = anchors.findOperation.bind(anchors);
+    jest.spyOn(anchors, 'findOperation').mockImplementationOnce(async key => {
+      const pending = await find(key); await anchors.commit(key); return pending;
+    });
+    expect(await audit.reconcile(created.operationKey)).toBe('CONFIRMED');
   });
   it('retains an ambiguous absent main commit instead of assuming rollback', async () => {
     const transaction = db.transaction.bind(db);

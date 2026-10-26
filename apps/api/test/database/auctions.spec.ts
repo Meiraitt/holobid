@@ -21,7 +21,7 @@ import { AuditCrypto } from '../../src/modules/audit/audit-crypto.service';
 import { SourceError } from '../../src/modules/catalog/catalog.errors';
 
 if (process.env.HOLOBID_ISOLATED_DATABASE_TEST !== '1') throw new Error('Run npm run test:db.');
-const fixturePath = join(__dirname, '../fixtures/tcgdex');
+const fixturePath = join(__dirname, '../../fixtures/tcgdex');
 const card = JSON.parse(readFileSync(join(fixturePath, 'base1-58.json'), 'utf8'));
 const image = readFileSync(join(fixturePath, 'base1-58.webp'));
 const origin = 'http://localhost:5173';

@@ -339,7 +339,7 @@ Catalog and media (BE-07)
   endpoint. Persisted provider enum-like value is TCGDEX; public source is tcgdex.
   GET /api/v1/media/:assetId is public and serves PostgreSQL bytes with the image
   MIME, immutable caching, ETag and conditional 304. It never calls the provider.
-  Real, trimmed TCGdex fixtures and two card images are in test/fixtures/tcgdex;
+  Real, trimmed TCGdex fixtures and two card images are in apps/api/fixtures/tcgdex;
   provenance.json records original URLs, retrieval time and image hashes. These
   are technical demo data; Pokemon card artwork belongs to its respective owners.
   References: https://tcgdex.dev/rest/filtering-sorting-pagination
@@ -566,3 +566,42 @@ Realtime notifications
   1000 transport clients. Heartbeats do not query PostgreSQL.
   References: https://socket.io/docs/v4/server-options/
               https://socket.io/docs/v4/middlewares/
+
+
+Durable simulated demo
+  Set DEMO_MODE=true only on the evaluation/demo deployment. It is false by
+  default. Apply both database migrations, then run npm run db:seed from root.
+  The API also recovers/seeds the demo at startup when this flag is enabled.
+  This explicitly provisions public demo accounts, never a production admin.
+
+  Account                            Role          Initial simulated balance
+  auctioneer@demo.holobid.test        AUCTIONEER    R$ 0.00
+  bidder1@demo.holobid.test           BIDDER        R$ 500.00
+  bidder2@demo.holobid.test           BIDDER        R$ 500.00
+  Password for these demo accounts: HoloBidDemo123!
+  These credentials are intentionally public and exclusive to this environment.
+  Passwords use the same Argon2id service as registration. Existing balances,
+  reservations, passwords, bids, receipts and sales are never reset by the seed.
+  Email collisions with unrelated accounts fail; they are never promoted.
+  All money is simulated. There are no payments, withdrawals or real sales.
+
+  First seed: one live Pikachu lot, one scheduled Charizard lot (+1 hour), and
+  one completed no-bid scenario. Card data/images are genuine TCGdex snapshots,
+  with checksums and provenance under apps/api/fixtures/tcgdex. No network is
+  needed. Later renewable lots reuse the previous persisted snapshot/image.
+  Initial funding is written once to the wallet ledger. No synthetic bids are
+  created. Use both bidders to bid, overbid, check released funds and audit.
+  The auctioneer can publish a short separate lot to evaluate settlement quickly.
+
+  A renewable lot spans a fixed 24-hour UTC window (00:00 to next 00:00), so
+  the first day's remaining duration depends on when the seed runs. At most one
+  is created per UTC day and one can be OPEN. Cancellation does not create a
+  replacement on the same day. Anti-sniping across midnight postpones rotation
+  until the old lot settles. All previous history remains available.
+  Startup after missed days settles the previous lot and opens only today's lot;
+  it does not backfill missed days or reset demo accounts. Existing unresolved
+  settlement/audit failures stop rotation and are logged without private data.
+  Native timers follow deadlines; failures retry after 1s/5s/30s, then 15 minutes.
+  No minute-by-minute database polling or external scheduling service is used.
+  Deploy must preserve PostgreSQL and signing keys, and include apps/api/fixtures
+  alongside dist. The seed CLI starts no HTTP server or background scheduler.

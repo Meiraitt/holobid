@@ -21,7 +21,7 @@ export class AuditAnchorRepository {
   private async lock(tx: AuditTransactionContext, value: string, namespace = 0) {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${value}, ${namespace}::bigint))`;
   }
-  findOperation(operationKey: string) { return this.database.client.auditIntent.findUnique({ where: { operationKey } }); }
+  async findOperation(operationKey: string) { return this.database.client.auditIntent.findUnique({ where: { operationKey } }); }
   pendingPage(after?: string) {
     return this.database.client.auditIntent.findMany({ where: { state: 'PREPARED', ...(after ? { id: { gt: after } } : {}) },
       orderBy: { id: 'asc' }, take: 100, select: { id: true, operationKey: true, auctionId: true } });

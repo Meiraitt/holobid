@@ -15,7 +15,7 @@ import { CatalogRepository } from '../../src/modules/catalog/catalog.repository'
 import { SourceError } from '../../src/modules/catalog/catalog.errors';
 
 if (process.env.HOLOBID_ISOLATED_DATABASE_TEST !== '1') throw new Error('Run npm run test:db.');
-const fixtures = join(__dirname, '../fixtures/tcgdex');
+const fixtures = join(__dirname, '../../fixtures/tcgdex');
 const card = JSON.parse(readFileSync(join(fixtures, 'base1-58.json'), 'utf8'));
 const image = readFileSync(join(fixtures, 'base1-58.webp'));
 const sha256 = createHash('sha256').update(image).digest('hex');
