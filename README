@@ -513,3 +513,28 @@ Public history and audit
   through HTTP audit, then removes the container. No arbitrary fixture/URL
   arguments are accepted. Both CLI commands refuse NODE_ENV=production.
   There is no HTTP tamper, repair or destructive history endpoint.
+
+
+Private dashboards
+  BIDDER: GET /api/v1/auctions/:auctionId/me and /me/participations.
+  The session supplies identity; no userId is accepted. Rank counts distinct
+  bidders by highest accepted bid. A never-participating bidder has null rank
+  and highestBidCents. Pseudonyms match public history and differ per auction.
+  Personal receiptCode is present only for a completed winner. Before settlement
+  the state is PROCESSING; settlementStatus distinguishes pending from FAILED.
+  filter=all (default), active (OPEN before endsAt), or won (completed winner).
+  Pagination orders by auction createdAt DESC, id DESC; new participation in an
+  older auction may appear on a later page. Refresh the first page for updates.
+
+  AUCTIONEER: GET /api/v1/auctioneer/auctions and /auctioneer/summary.
+  Owner-only listing accepts status=SCHEDULED/LIVE/ENDED/CANCELLED or no filter.
+  Includes result, audit integrity and server-computed canCancel/cancelReason.
+  Summary returns totalReceivedCents and settledCount for completed sales with
+  winners; withoutWinnerCount separately counts completed no-bid auctions.
+  Pending, failed, cancelled and still-open auctions contribute no revenue.
+  Summary wallet and revenue use the same repeatable-read database snapshot.
+  Bidder dashboards also read rankings/reservations from one primary snapshot.
+  Owner lists lock rows in a stable order before reading their audit anchors.
+  Lists use limit=20 (1-100), signed cursors bound to identity/filter/endpoint,
+  and nextCursor=null at the end. All private endpoints require a live session
+  and current database role; all responses have Cache-Control: no-store.
