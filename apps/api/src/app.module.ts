@@ -1,4 +1,5 @@
 import process from 'node:process';
+import { BidsModule } from './modules/bids/bids.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { validateEnvironment } from './config/environment';
@@ -21,6 +22,7 @@ import { HealthModule } from './modules/health/health.module';
     AuthModule,
     AuditModule,
     AuctionsModule,
+    BidsModule,
     WalletsModule,
     CatalogModule,
   ],

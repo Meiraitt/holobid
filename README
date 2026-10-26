@@ -12,7 +12,7 @@ Sessões persistidas, refresh, logout e autorização estão implementados.
 Carteira, depósitos simulados idempotentes, catálogo TCGdex e persistência de
 imagens também estão disponíveis; as rotas estão descritas abaixo.
 Publicação, vitrine e cancelamento de lotes sem lances estão implementados.
-Lances, liquidação e auditoria pública entram nas próximas tasks. O frontend contém apenas a estrutura
+Liquidação e auditoria pública entram nas próximas tasks. O frontend contém apenas a estrutura
 TypeScript da BE-01; React/Vite entra na FE-01.
 
 Requisitos
@@ -216,7 +216,7 @@ Os clients usam pools pequenos, conexão lazy e limites de espera/consulta;
 fecham as conexões no shutdown. Eles não disparam sondagens periódicas.
 A transação principal não inclui a base de auditoria: o protocolo de
 confirmação, HMAC e recuperação da BE-08 coordena commits separados. As
-primitivas internas já existem; lances e auditoria pública entram em BE-10/BE-12.
+primitivas internas e lances já existem; auditoria pública entra em BE-12.
 
 O Compose sobe somente PostgreSQL local, com dois bancos e papéis distintos,
 sem permissão de conexão cruzada e porta exposta apenas em 127.0.0.1:55432.
@@ -413,3 +413,34 @@ Auction publication and lifecycle (BE-09)
   Cancelled public details are 404, while history, snapshots, media and the anchor
   remain intact. Internal verification still works; the public audit route is BE-12.
   There are no PATCH/DELETE, manual end, role-changing or tampering endpoints.
+
+Transactional bidding (BE-10)
+  POST /api/v1/auctions/:id/bids requires BIDDER, Bearer, UUID v4 Idempotency-Key
+  and {amountCents}. Integer cents: 1..100,000,000,000. Owners cannot bid even if
+  their role changes. First bid >= starting price; next bid >= current + increment.
+  The current leader cannot increase their own bid. No rejected bid is persisted.
+
+  Lock order: idempotency record, auction, then all wallets by ascending user ID.
+  Deposits only lock their wallet. The previous leader's reservation is released;
+  the new leader reserves the entire amount, with matching ledger entries in the
+  same transaction. Other lots' reservations remain intact. Compare cached reserved
+  balance to active reservations before changing it; inconsistencies stop writes.
+  Both release/reserve entries refer to the newly accepted bid for audit recovery.
+
+  Recheck backend time after audit verification and contended locks. Acceptance is
+  startsAt <= acceptedAt < endsAt. If remaining time <= 120 seconds, endsAt becomes
+  acceptedAt + 120 seconds; exactly 120 seconds leaves it unchanged. Rejected bids
+  never extend the deadline. A later accepted bid can extend it again.
+
+  201 returns {operationId, confirmation:"CONFIRMED", bid, auction, wallet}.
+  202 returns only {operationId, auctionId, confirmation:"PENDING"}; the main commit
+  may be uncertain. Retry the same body/key to reconcile, never a new key. An absent
+  uncertain primary operation remains pending. Replays return the original response;
+  GET current auction/wallet state afterwards. Ten new attempts/10 seconds/user;
+  completed replays bypass the limiter. WebSocket notifications are BE-14.
+
+  Stable failures include BID_BELOW_MINIMUM (with minimumBidCents), ALREADY_LEADING,
+  AUCTION_NOT_STARTED/ENDED/CANCELLED, INSUFFICIENT_FUNDS, BID_LIMIT_REACHED,
+  AUDIT_PENDING/TAMPERED/UNAVAILABLE and WALLET_INCONSISTENT/RESERVATION_INCONSISTENT.
+  Read integrity diagnostics before any operational repair; never reconstruct a
+  trusted checkpoint from potentially altered main data.

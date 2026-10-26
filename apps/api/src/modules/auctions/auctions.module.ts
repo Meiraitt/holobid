@@ -15,5 +15,5 @@ import { AuctionOwnershipService } from './auction-ownership.service';
 
 @Module({ imports: [DatabaseModule, AuthModule, AuditModule, CatalogModule, IdempotencyModule], controllers: [AuctionsController],
   providers: [AuctionsRepository, AuctionOwnershipService, AuctionsService, AuctionPublicationService, AuctionCursorService, AuctionClock, AuctionPublishLimiter],
-  exports: [AuctionsRepository, AuctionOwnershipService] })
+  exports: [AuctionsRepository, AuctionOwnershipService, AuctionClock] })
 export class AuctionsModule {}

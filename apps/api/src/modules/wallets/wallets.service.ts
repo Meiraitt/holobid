@@ -1,21 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import type { WalletResponse, DepositResponse } from '@holobid/contracts';
-import type { Wallet } from '../../generated/main/client';
 import { ApiException } from '../../common/http/api.exception';
 import { RateLimitException } from '../../common/http/rate-limit.exception';
 import { IdempotencyService } from '../../common/idempotency/idempotency.service';
-import { MAX_MONEY_CENTS, moneyToNumber } from '../../common/money';
+import { MAX_MONEY_CENTS } from '../../common/money';
 import { WalletsRepository } from './wallets.repository';
 import { DepositRateLimiter } from './deposit-rate-limiter';
 
-function present(wallet: Wallet): WalletResponse {
-  return {
-    totalCents: moneyToNumber(wallet.totalCents), reservedCents: moneyToNumber(wallet.reservedCents),
-    availableCents: moneyToNumber(wallet.totalCents - wallet.reservedCents),
-    version: wallet.version, serverTime: new Date().toISOString(),
-  };
-}
+import { presentWallet } from './wallet.presenter';
 
 @Injectable()
 export class WalletsService {
@@ -24,7 +17,7 @@ export class WalletsService {
   async get(userId: string): Promise<WalletResponse> {
     const wallet = await this.wallets.findByUserId(userId);
     if (!wallet) throw new Error('Wallet invariant violated.');
-    return present(wallet);
+    return presentWallet(wallet);
   }
 
   deposit(userId: string, key: string, amountCents: number) {
@@ -40,7 +33,7 @@ export class WalletsService {
       const depositId = randomUUID();
       const updated = await this.wallets.credit(userId, amount, tx);
       await this.wallets.recordDeposit(userId, depositId, amount, tx);
-      return { status: 201, resourceId: depositId, body: { depositId, wallet: present(updated) } };
+      return { status: 201, resourceId: depositId, body: { depositId, wallet: presentWallet(updated) } };
     });
   }
 }
