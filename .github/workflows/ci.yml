@@ -32,9 +32,5 @@ jobs:
         run: npm install --global npm@11.21.1
       - name: Install dependencies
         run: npm ci
-      - name: Lint
-        run: npm run lint
-      - name: Check types
-        run: npm run typecheck
-      - name: Build workspaces
-        run: npm run build
+      - name: Validate the workspace
+        run: npm run check

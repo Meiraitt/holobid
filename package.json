@@ -13,6 +13,7 @@
   },
   "packageManager": "npm@11.21.1",
   "scripts": {
+    "check": "npm run lint && npm run typecheck && npm run build",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "npm run typecheck --workspaces",
     "build": "npm run build --workspaces",
