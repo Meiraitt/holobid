@@ -1,0 +1,43 @@
+# Local planning documents: do not publish Markdown files.
+*.[mM][dD]
+/outputs/
+/work/
+/.plans/
+
+# Dependencies and generated files
+node_modules/
+dist/
+build/
+coverage/
+.cache/
+.vite/
+.turbo/
+*.tsbuildinfo
+*.log
+
+# Secrets; safe environment templates remain versioned
+.env
+.env.*
+!.env.example
+!**/.env.example
+!.env.test.example
+!**/.env.test.example
+secrets/
+backups/
+*.pem
+*.key
+*.p12
+*.dump
+
+# Local tools and test artifacts
+.DS_Store
+.idea/
+.vscode/
+.vercel/
+.northflank/
+playwright-report/
+test-results/
+reports/
+
+# Keep README (without extension), migrations, lockfiles,
+# source code, tests and small public seed fixtures versioned.

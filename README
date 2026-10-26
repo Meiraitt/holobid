@@ -1,0 +1,69 @@
+HoloBid
+-------
+
+Plataforma de leilões de cartas Pokémon, com catálogo TCGdex.
+
+Estado atual
+------------
+A BE-01 prepara o monorepo, ferramentas e CI. Os arquivos src/index.ts são
+entradas vazias para validar a compilação de cada workspace. Ainda não há
+servidor HTTP, interface React, conexão com banco ou integração TCGdex.
+NestJS e React/Vite serão inicializados nas respectivas tasks.
+
+Requisitos
+----------
+- Node.js 24.22.1 (versão fixada em .nvmrc).
+- npm 11.21.1 (versão fixada em packageManager).
+
+Use um gerenciador de versões ou instale as versões acima antes de rodar os
+comandos. Se já usa nvm, execute nvm install e nvm use na raiz do projeto.
+A instalação falha em versões incompatíveis para evitar diferenças com o CI.
+
+Preparação
+----------
+Na raiz:
+
+    npm ci
+    cp apps/api/.env.example apps/api/.env
+    cp apps/web/.env.example apps/web/.env
+
+Os templates antecipam os endereços locais; serão consumidos quando as
+aplicações forem inicializadas. Não existem segredos reais nos exemplos.
+Variáveis VITE_* são públicas no navegador e nunca devem conter credenciais.
+
+Estrutura
+---------
+apps/api             API NestJS (inicialização na BE-02).
+apps/web             Frontend React/Vite (inicialização na FE-01).
+packages/contracts   Contratos de transporte compartilhados (BE-02).
+
+O repositório compartilha código e configuração, com builds independentes.
+O deploy planejado usa Northflank para a API e Vercel para o frontend.
+A configuração de hospedagem será adicionada nas tasks de deploy.
+
+Verificações
+------------
+    npm run lint
+    npm run typecheck
+    npm run build
+
+Build separado, incluindo os contratos compartilhados:
+
+    npm run build:api
+    npm run build:web
+
+Nesta etapa, build compila somente os arquivos TypeScript de estrutura.
+O frontend passará a usar Vite na FE-01. Não há comando dev nem testes de
+negócio antes das tasks que adicionam essas funcionalidades.
+
+O GitHub Actions executa instalação limpa, lint, typecheck e build em PRs
+para main e em pushes para main, sem exigir segredos de ambiente.
+
+Contribuição
+------------
+Cada task possui uma branch e um PR próprio, com commits e descrição em
+inglês. As verificações pertinentes devem passar antes da revisão.
+
+Planos locais em Markdown, arquivos .env, dependências e artefatos gerados
+ficam fora do Git. Este README sem extensão e os templates .env.example
+são versionados. O repositório começa privado e será público na entrega.
