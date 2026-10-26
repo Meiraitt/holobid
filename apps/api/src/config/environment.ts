@@ -4,6 +4,7 @@ export interface ApiEnvironment {
   WEB_ORIGIN: string;
   DATABASE_URL: string;
   AUDIT_DATABASE_URL: string;
+  JWT_SECRET: string;
 }
 
 export class EnvironmentValidationError extends Error {
@@ -58,6 +59,12 @@ export function validateEnvironment(raw: Record<string, unknown>): ApiEnvironmen
     errors.push('AUDIT_DATABASE_URL');
   }
 
+  const jwtSecret = raw.JWT_SECRET;
+  if (typeof jwtSecret !== 'string' || !/^[A-Za-z0-9_-]{43,86}$/.test(jwtSecret) ||
+      Buffer.from(jwtSecret, 'base64url').length < 32 || Buffer.from(jwtSecret, 'base64url').toString('base64url') !== jwtSecret) {
+    errors.push('JWT_SECRET');
+  }
+
   if (errors.length > 0) throw new EnvironmentValidationError(errors);
   return {
     NODE_ENV: nodeEnv as ApiEnvironment['NODE_ENV'],
@@ -65,5 +72,6 @@ export function validateEnvironment(raw: Record<string, unknown>): ApiEnvironmen
     WEB_ORIGIN: origin as string,
     DATABASE_URL: raw.DATABASE_URL as string,
     AUDIT_DATABASE_URL: raw.AUDIT_DATABASE_URL as string,
+    JWT_SECRET: jwtSecret as string,
   };
 }

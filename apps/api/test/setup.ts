@@ -7,3 +7,6 @@ process.env.PORT = '3000';
 
 process.env.DATABASE_URL ??= 'postgresql://test:test@127.0.0.1:1/main';
 process.env.AUDIT_DATABASE_URL ??= 'postgresql://test:test@127.0.0.1:1/audit';
+
+// Public test-only key, never used outside isolated tests.
+process.env.JWT_SECRET = Buffer.alloc(32, 7).toString('base64url');
