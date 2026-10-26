@@ -109,6 +109,14 @@ describe('HTTP bids, real PostgreSQL reservations and audit protocol', () => {
     await h.bid(lot.id, b, 1100, key).expect(201); const other = await h.publish(); await h.bid(other.id, a, 1000, key).expect(201);
     h.now = new Date(Date.now() + 86400_000); expect((await h.bid(lot.id, a, 1000, key).expect(201)).body).toEqual(confirmed.body);
   });
+  it('returns a conflict, never a unique-index error, for different concurrent bodies sharing a key', async () => {
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const lot = await h.publish(), key = randomUUID();
+      const results = await Promise.all([h.bid(lot.id, a, 1000, key), h.bid(lot.id, a, 1100, key)]);
+      expect(results.map(result => result.status).sort()).toEqual([201, 409]);
+      expect(results.find(result => result.status === 409)!.body.code).toBe('IDEMPOTENCY_KEY_REUSED');
+    }
+  });
   it('rolls back release, reserve, ledger and bid when persistence or anchor preparation fails', async () => {
     const lot = await h.publish(); await h.bid(lot.id, a).expect(201);
     const accept = h.app.get(BidsRepository).accept.bind(h.app.get(BidsRepository));

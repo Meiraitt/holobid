@@ -1,3 +1,4 @@
+import { AuctionScheduler } from '../../src/modules/settlements/auction-scheduler';
 import process from 'node:process';
 import { createHash, randomUUID } from 'node:crypto';
 import { Controller, Get, Param, ParseUUIDPipe } from '@nestjs/common';
@@ -64,6 +65,7 @@ describe('Session lifecycle and authorization', () => {
       NODE_ENV: 'production', WEB_ORIGIN: 'https://holobid.example', PORT: 3000,
       DATABASE_URL: process.env.DATABASE_URL, AUDIT_DATABASE_URL: process.env.AUDIT_DATABASE_URL, JWT_SECRET: process.env.JWT_SECRET,
     }));
+    builder.overrideProvider(AuctionScheduler).useValue({ onApplicationBootstrap() {} });
     const module = await builder.compile();
     const instance = module.createNestApplication<NestExpressApplication>({ logger: false });
     configureApp(instance);

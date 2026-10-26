@@ -12,7 +12,7 @@ Sessões persistidas, refresh, logout e autorização estão implementados.
 Carteira, depósitos simulados idempotentes, catálogo TCGdex e persistência de
 imagens também estão disponíveis; as rotas estão descritas abaixo.
 Publicação, vitrine e cancelamento de lotes sem lances estão implementados.
-Liquidação e auditoria pública entram nas próximas tasks. O frontend contém apenas a estrutura
+Auditoria pública, painéis e notificações Socket.IO entram nas próximas tasks. O frontend contém apenas a estrutura
 TypeScript da BE-01; React/Vite entra na FE-01.
 
 Requisitos
@@ -444,3 +444,44 @@ Transactional bidding (BE-10)
   AUDIT_PENDING/TAMPERED/UNAVAILABLE and WALLET_INCONSISTENT/RESERVATION_INCONSISTENT.
   Read integrity diagnostics before any operational repair; never reconstruct a
   trusted checkpoint from potentially altered main data.
+
+Automatic settlement and receipts (BE-11)
+  The same API process schedules starts and ends from persistent auction dates.
+  Publication, bidding and cancellation signal a reload of the durable deadline;
+  every settlement job locks the auction and checks its current endsAt again.
+  An uncertain commit emits only an internal RECHECK signal, never a confirmed
+  publication/bid event. A stale timer cannot close an extended lot. Startup reconciles pending audit
+  intents and recovers expired/ongoing lots, without any connected browser.
+
+  The winner and seller wallets are locked in user-ID order. Debit the winner's
+  total/reserved amount, credit the seller, consume the reservation and persist one
+  Settlement/Receipt in the same PostgreSQL transaction. Purchase/sale entries use
+  the settlement ID and have opposite total deltas. Uniqueness plus auction locks
+  make repeated/concurrent jobs harmless. Other lots' reservations are preserved.
+  Lots without bids complete with no winner, money movements or receipt.
+
+  Audit must be confirmed before settlement. Transient failures become PENDING;
+  inconsistent reservations/wallets, altered history or seller balance overflow
+  become FAILED, with no partial transfer. FAILED requires operator investigation
+  and an explicit repair/requeue; there is no public repair/settle endpoint and no
+  automatic balance adjustment. PostgreSQL already prevents total < reserved;
+  application checks also compare cached reservations against active records.
+  A lost COMMIT acknowledgement triggers a durable-state reread before any failure
+  status is written, so a completed transfer is never overwritten or repeated.
+
+  Short retries are bounded to 1s, 5s and 30s; recovery scans run every 15 minutes.
+  No per-second/per-minute database polling is used. Long timers are capped at the
+  Node timer maximum and reload dates when they wake. Shutdown clears timers and
+  drains running jobs before database disconnection. The scheduler is enabled in
+  development/production; isolated tests start it explicitly. No extra worker,
+  Redis, queue package or third-party scheduler service is required.
+  Recovery may delay settlement after an outage, but bids still respect endsAt.
+  Demo rollover is a separate seed task. Socket delivery remains BE-14.
+
+  GET /api/v1/receipts/:publicCode is public, no-store, and returns PublicReceipt:
+  {publicCode, auctionId, title, imageUrl, setName, cardNumber, description?,
+   attributes, amountCents, settledAt, winnerPseudonym, finalAuditHash, auditUrl}.
+  The code contains 24 random bytes (32 base64url characters). Unknown or malformed
+  codes return 404 RECEIPT_NOT_FOUND. Snapshot/image data remain local and work
+  while TCGdex is unavailable. No seller/bidder IDs, emails or wallet values appear.
+  imageUrl/auditUrl are API-relative paths; the public audit endpoint is BE-12.
