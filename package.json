@@ -13,7 +13,7 @@
   },
   "packageManager": "npm@11.21.1",
   "scripts": {
-    "check": "npm run lint && npm run typecheck && npm run build && npm run test:api && npm run test:db",
+    "check": "npm run lint && npm run typecheck && npm run build && npm run test:api && npm run test:db && npm run test:http",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "npm run build --workspace=@holobid/contracts && npm run typecheck --workspaces",
     "build": "npm run build --workspaces",
@@ -29,7 +29,8 @@
     "postinstall": "npm run db:generate",
     "audit:verify": "npm run audit:verify --workspace=@holobid/api --",
     "audit:tamper-demo": "npm run audit:tamper-demo --workspace=@holobid/api --",
-    "db:seed": "npm run build:api && npm run db:seed --workspace=@holobid/api"
+    "db:seed": "npm run build:api && npm run db:seed --workspace=@holobid/api",
+    "test:http": "npm run build:api && npm run test:http --workspace=@holobid/api"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

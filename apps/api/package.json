@@ -15,7 +15,9 @@
     "test:db": "node scripts/test-database.mjs",
     "audit:verify": "node dist/cli/audit-verify.js",
     "audit:tamper-demo": "node scripts/test-database.mjs --tamper-demo",
-    "db:seed": "node dist/cli/demo-seed.js"
+    "db:seed": "node dist/cli/demo-seed.js",
+    "test:http": "node scripts/test-database.mjs --http",
+    "test:http:live": "node scripts/test-database.mjs --http-live"
   },
   "dependencies": {
     "@holobid/contracts": "0.0.0",
