@@ -5,6 +5,8 @@ import { IsInt, Min } from 'class-validator';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/configure-app';
+import { DatabaseService } from '../src/database/database.service';
+import { AuditDatabaseService } from '../src/database/audit-database.service';
 import { HealthService } from '../src/modules/health/health.service';
 import { ApiException } from '../src/common/http/api.exception';
 
@@ -33,7 +35,10 @@ describe('HTTP foundation', () => {
   let app: NestExpressApplication;
 
   beforeAll(async () => {
-    const module = await Test.createTestingModule({ imports: [AppModule], controllers: [TestController] }).compile();
+    const module = await Test.createTestingModule({ imports: [AppModule], controllers: [TestController] })
+      .overrideProvider(DatabaseService).useValue({ ping: jest.fn().mockResolvedValue(undefined) })
+      .overrideProvider(AuditDatabaseService).useValue({ ping: jest.fn().mockResolvedValue(undefined) })
+      .compile();
     app = module.createNestApplication<NestExpressApplication>({ logger: false });
     configureApp(app);
     await app.init();

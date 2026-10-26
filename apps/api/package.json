@@ -8,16 +8,23 @@
     "start": "node dist/main.js",
     "build": "nest build",
     "typecheck": "tsc --noEmit -p tsconfig.spec.json",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand",
+    "db:generate": "prisma generate && prisma generate --config prisma.audit.config.ts",
+    "db:migrate": "prisma migrate deploy",
+    "db:audit:migrate": "prisma migrate deploy --config prisma.audit.config.ts",
+    "test:db": "node scripts/test-database.mjs"
   },
   "dependencies": {
     "@holobid/contracts": "0.0.0",
     "@nestjs/common": "11.2.8",
+    "@nestjs/config": "4.0.4",
     "@nestjs/core": "11.2.8",
     "@nestjs/platform-express": "11.2.8",
-    "@nestjs/config": "4.0.4",
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
     "class-transformer": "0.5.1",
     "class-validator": "0.15.1",
+    "pg": "8.23.1",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2"
   },
@@ -26,8 +33,10 @@
     "@nestjs/testing": "11.2.8",
     "@types/express": "5.0.6",
     "@types/jest": "30.0.0",
+    "@types/pg": "8.23.1",
     "@types/supertest": "7.2.1",
     "jest": "30.5.2",
+    "prisma": "7.10.1",
     "supertest": "7.3.1",
     "ts-jest": "29.4.15"
   }

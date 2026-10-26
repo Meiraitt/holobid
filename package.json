@@ -13,7 +13,7 @@
   },
   "packageManager": "npm@11.21.1",
   "scripts": {
-    "check": "npm run lint && npm run typecheck && npm run build && npm run test:api",
+    "check": "npm run lint && npm run typecheck && npm run build && npm run test:api && npm run test:db",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "npm run build --workspace=@holobid/contracts && npm run typecheck --workspaces",
     "build": "npm run build --workspaces",
@@ -21,7 +21,12 @@
     "build:web": "npm run build --workspace=@holobid/contracts && npm run build --workspace=@holobid/web",
     "dev:api": "npm run build --workspace=@holobid/contracts && npm run dev --workspace=@holobid/api",
     "start:api": "npm run start --workspace=@holobid/api",
-    "test:api": "npm run build --workspace=@holobid/contracts && npm run test --workspace=@holobid/api"
+    "test:api": "npm run build --workspace=@holobid/contracts && npm run test --workspace=@holobid/api",
+    "db:generate": "npm run db:generate --workspace=@holobid/api",
+    "db:migrate": "npm run db:migrate --workspace=@holobid/api",
+    "db:audit:migrate": "npm run db:audit:migrate --workspace=@holobid/api",
+    "test:db": "npm run build --workspace=@holobid/contracts && npm run test:db --workspace=@holobid/api",
+    "postinstall": "npm run db:generate"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

@@ -1,0 +1,241 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/main"
+  moduleFormat        = "cjs"
+  importFileExtension = ""
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  BIDDER
+  AUCTIONEER
+}
+
+enum WalletEntryType {
+  DEPOSIT
+  RESERVE
+  RELEASE
+  PURCHASE
+  SALE
+}
+
+enum AuctionLifecycle {
+  OPEN
+  CANCELLED
+  ENDED
+}
+
+enum SettlementStatus {
+  NOT_DUE
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum ReservationStatus {
+  ACTIVE
+  RELEASED
+  CONSUMED
+}
+
+enum IdempotencyState {
+  PENDING
+  COMPLETED
+}
+
+model User {
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email              String              @unique @db.VarChar(254)
+  passwordHash       String
+  role               Role                @default(BIDDER)
+  createdAt          DateTime            @default(now()) @db.Timestamptz(3)
+  wallet             Wallet?
+  sessions           AuthSession[]
+  auctions           Auction[]
+  bids               Bid[]
+  reservations       Reservation[]
+  idempotencyRecords IdempotencyRecord[]
+}
+
+model AuthSession {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String    @db.Uuid
+  refreshTokenHash String    @unique @db.Char(64)
+  expiresAt        DateTime  @db.Timestamptz(3)
+  revokedAt        DateTime? @db.Timestamptz(3)
+  rotationVersion  Int       @default(0)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  user             User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Wallet {
+  userId        String        @id @db.Uuid
+  totalCents    BigInt        @default(0)
+  reservedCents BigInt        @default(0)
+  version       Int           @default(0)
+  user          User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  entries       WalletEntry[]
+}
+
+model WalletEntry {
+  id                 String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId             String          @db.Uuid
+  type               WalletEntryType
+  totalDeltaCents    BigInt
+  reservedDeltaCents BigInt
+  reference          String          @db.Uuid
+  createdAt          DateTime        @default(now()) @db.Timestamptz(3)
+  wallet             Wallet          @relation(fields: [userId], references: [userId], onDelete: Restrict)
+
+  @@unique([userId, type, reference])
+  @@index([userId, createdAt, id])
+}
+
+model CatalogSnapshot {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  provider    String    @default("TCGDEX") @db.VarChar(32)
+  externalId  String    @db.VarChar(128)
+  language    String    @db.VarChar(10)
+  title       String    @db.VarChar(256)
+  description String?
+  setId       String    @db.VarChar(128)
+  setName     String    @db.VarChar(256)
+  cardNumber  String    @db.VarChar(32)
+  attributes  Json      @default("{}")
+  fetchedAt   DateTime  @db.Timestamptz(3)
+  auctions    Auction[]
+
+  @@index([provider, externalId, language])
+}
+
+model MediaAsset {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bytes     Bytes
+  mimeType  String    @db.VarChar(32)
+  sha256    String    @unique @db.Char(64)
+  size      Int
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  auctions  Auction[]
+}
+
+model Auction {
+  id                    String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId              String           @db.Uuid
+  snapshotId            String           @db.Uuid
+  imageId               String           @db.Uuid
+  startingPriceCents    BigInt
+  minimumIncrementCents BigInt
+  startsAt              DateTime         @db.Timestamptz(3)
+  originalEndsAt        DateTime         @db.Timestamptz(3)
+  endsAt                DateTime         @db.Timestamptz(3)
+  lifecycle             AuctionLifecycle @default(OPEN)
+  version               Int              @default(0)
+  currentBidId          String?          @db.Uuid
+  bidCount              Int              @default(0)
+  auditHead             String           @db.Char(64)
+  auditMac              String           @db.Char(64)
+  settlementStatus      SettlementStatus @default(NOT_DUE)
+  isDemo                Boolean          @default(false)
+  createdAt             DateTime         @default(now()) @db.Timestamptz(3)
+  seller                User             @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+  snapshot              CatalogSnapshot  @relation(fields: [snapshotId], references: [id], onDelete: Restrict)
+  image                 MediaAsset       @relation(fields: [imageId], references: [id], onDelete: Restrict)
+  bids                  Bid[]            @relation("AuctionBids")
+  currentBid            Bid?             @relation("CurrentBid", fields: [id, currentBidId], references: [auctionId, id], onDelete: Restrict, onUpdate: NoAction)
+  reservations          Reservation[]
+  settlement            Settlement?
+  receipt               Receipt?
+
+  @@unique([id, currentBidId])
+  @@index([lifecycle, endsAt])
+  @@index([sellerId, createdAt, id])
+}
+
+model Bid {
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  auctionId    String       @db.Uuid
+  bidderId     String       @db.Uuid
+  sequence     Int
+  amountCents  BigInt
+  acceptedAt   DateTime     @db.Timestamptz(3)
+  endsAtAfter  DateTime     @db.Timestamptz(3)
+  pseudonym    String       @db.VarChar(64)
+  previousHash String       @db.Char(64)
+  hash         String       @db.Char(64)
+  mac          String       @db.Char(64)
+  auction      Auction      @relation("AuctionBids", fields: [auctionId], references: [id], onDelete: Restrict)
+  bidder       User         @relation(fields: [bidderId], references: [id], onDelete: Restrict)
+  currentFor   Auction?     @relation("CurrentBid")
+  reservation  Reservation?
+  settlement   Settlement?
+
+  @@unique([auctionId, sequence])
+  @@unique([auctionId, id])
+  @@unique([auctionId, id, bidderId])
+  @@index([bidderId, acceptedAt, id])
+}
+
+model Reservation {
+  id          String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  auctionId   String            @db.Uuid
+  bidId       String            @db.Uuid
+  userId      String            @db.Uuid
+  amountCents BigInt
+  status      ReservationStatus @default(ACTIVE)
+  createdAt   DateTime          @default(now()) @db.Timestamptz(3)
+  auction     Auction           @relation(fields: [auctionId], references: [id], onDelete: Restrict)
+  bid         Bid               @relation(fields: [auctionId, bidId, userId], references: [auctionId, id, bidderId], onDelete: Restrict, onUpdate: NoAction)
+  user        User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  // Partial unique index on auctionId WHERE status = 'ACTIVE' is in the SQL migration.
+
+  @@unique([auctionId, bidId, userId])
+  @@index([userId, status])
+}
+
+model Settlement {
+  id           String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  auctionId    String           @unique @db.Uuid
+  winningBidId String?          @db.Uuid
+  amountCents  BigInt
+  status       SettlementStatus @default(PENDING)
+  completedAt  DateTime?        @db.Timestamptz(3)
+  failureCode  String?          @db.VarChar(64)
+  auction      Auction          @relation(fields: [auctionId], references: [id], onDelete: Restrict)
+  winningBid   Bid?             @relation(fields: [auctionId, winningBidId], references: [auctionId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([auctionId, winningBidId])
+}
+
+model Receipt {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  publicCode      String   @unique @db.VarChar(64)
+  auctionId       String   @unique @db.Uuid
+  itemSnapshot    Json
+  amountCents     BigInt
+  issuedAt        DateTime @default(now()) @db.Timestamptz(3)
+  winnerPseudonym String   @db.VarChar(64)
+  finalHash       String   @db.Char(64)
+  auction         Auction  @relation(fields: [auctionId], references: [id], onDelete: Restrict)
+}
+
+model IdempotencyRecord {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String           @db.Uuid
+  operation      String           @db.VarChar(64)
+  key            String           @db.VarChar(128)
+  requestHash    String           @db.Char(64)
+  state          IdempotencyState @default(PENDING)
+  resourceId     String?          @db.Uuid
+  response       Json?
+  responseStatus Int?
+  createdAt      DateTime         @default(now()) @db.Timestamptz(3)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, operation, key])
+}
