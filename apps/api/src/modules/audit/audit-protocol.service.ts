@@ -28,7 +28,7 @@ export class AuditProtocolService {
           if (!snapshot || this.chain.verify(snapshot).integrity !== 'VERIFIED') throw auditTampered();
           const proofHash = await this.source.proof(snapshot, operationKey, tx);
           if (!proofHash) throw new Error('An audited operation needs a completed primary operation record.');
-          proposal = { operationKey, attemptId: randomUUID(), auctionId, expected, next: snapshotHead(snapshot), proofHash };
+          proposal = { operationKey, attemptId: randomUUID(), auctionId, expected, next: snapshotHead(snapshot), proofHash, requestHash: await this.source.requestHash(operationKey, tx) };
           try { await this.anchors.prepare(proposal); }
           catch (error) { if (error instanceof ApiException) throw error; throw auditUnavailable(); }
         });

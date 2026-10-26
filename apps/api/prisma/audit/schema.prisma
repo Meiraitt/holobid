@@ -32,6 +32,7 @@ model AuditIntent {
   auctionId        String           @db.Uuid
   keyId            String           @default("v1") @db.VarChar(32)
   algorithmVersion Int              @default(1)
+  requestHash      String?          @db.Char(64)
   proofHash        String?          @db.Char(64)
   operationKey     String           @unique @db.Uuid
   expectedSequence Int?

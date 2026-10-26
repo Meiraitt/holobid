@@ -2,7 +2,7 @@ import type { Auction, Bid, CatalogSnapshot, MediaAsset } from '../../generated/
 
 export type AuditSnapshot = Auction & { bids: Bid[]; snapshot: CatalogSnapshot; image: MediaAsset };
 export type AuditHead = { sequence: number; hash: string; mac: string; keyId: string; algorithmVersion: number };
-export type AuditProposal = { attemptId: string; operationKey: string; auctionId: string; expected: AuditHead | null; next: AuditHead; proofHash: string };
+export type AuditProposal = { attemptId: string; operationKey: string; auctionId: string; expected: AuditHead | null; next: AuditHead; proofHash: string; requestHash?: string };
 export type AuditVerdict = {
   integrity: 'VERIFIED' | 'TAMPERED' | 'INCOMPLETE';
   reasonCode: string;
