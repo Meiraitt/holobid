@@ -9,6 +9,8 @@ Monorepo com a base HTTP NestJS 11 e persistência PostgreSQL/Prisma: schemas,
 migrations, constraints e contexto transacional. Cadastro, login com
 Argon2id/JWT e consulta do usuário autenticado estão implementados.
 Sessões persistidas, refresh, logout e autorização estão implementados.
+Carteira, depósitos simulados idempotentes, catálogo TCGdex e persistência de
+imagens também estão disponíveis; as rotas estão descritas abaixo.
 As operações de leilão entram nas próximas tasks. O frontend contém apenas a estrutura
 TypeScript da BE-01; React/Vite entra na FE-01.
 
@@ -313,3 +315,31 @@ Wallets (BE-06)
   no balance, ledger or idempotency change; rate limiting is deliberately in memory.
   422 BALANCE_LIMIT_EXCEEDED leaves the wallet unchanged. Never send a userId.
   Replayed wallet data reflects that operation; GET /wallet obtains current state.
+
+Catalog and media (BE-07)
+  GET /api/v1/catalog/items?q=pikachu&page=1&limit=20 and
+  GET /api/v1/catalog/items/:externalId require an AUCTIONEER bearer session.
+  Search accepts up to 80 characters, page 1..10000 and limit 1..20.
+  It returns brief cards without fetching details for every result. hasMore uses
+  the provider's raw page size; unusable entries are omitted, not repaginated.
+  Both catalog routes share 30 requests/minute/user; 429 includes Retry-After.
+  TCGdex REST uses English, no key or SDK. Pokemon, Trainer and Energy are valid
+  TCG categories. Optional attributes remain absent when unavailable. Source prices
+  and other unnecessary metadata are never exposed or stored.
+  In-memory cache: five minutes, at most 100 pages and 100 details. Only fresh
+  successes are served (stale=false); provider failures return CATALOG_UNAVAILABLE.
+  Requests use a five-second timeout (including body and redirects), at most two
+  same-host redirects, and one retry with 150ms backoff for network/429/5xx failures.
+  Only HTTPS api.tcgdex.net (JSON) and assets.tcgdex.net (images) are allowed.
+  JSON is bounded to 512 KiB; images to 2 MiB, with MIME and signature checks.
+  CatalogImportService.prepare fetches outside transactions. persist receives a
+  caller-owned transaction, creates an immutable snapshot and deduplicates image
+  bytes by SHA-256. BE-09 will use it to publish auctions; there is no public import
+  endpoint. Persisted provider enum-like value is TCGDEX; public source is tcgdex.
+  GET /api/v1/media/:assetId is public and serves PostgreSQL bytes with the image
+  MIME, immutable caching, ETag and conditional 304. It never calls the provider.
+  Real, trimmed TCGdex fixtures and two card images are in test/fixtures/tcgdex;
+  provenance.json records original URLs, retrieval time and image hashes. These
+  are technical demo data; Pokemon card artwork belongs to its respective owners.
+  References: https://tcgdex.dev/rest/filtering-sorting-pagination
+  https://tcgdex.dev/rest/card and https://tcgdex.dev/assets

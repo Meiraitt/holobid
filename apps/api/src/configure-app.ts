@@ -20,8 +20,8 @@ export function configureApp(app: NestExpressApplication): void {
     },
     credentials: true,
     methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-CSRF-Protection'],
-    exposedHeaders: ['X-Request-ID'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-CSRF-Protection', 'If-None-Match'],
+    exposedHeaders: ['X-Request-ID', 'Retry-After', 'ETag'],
   });
   app.useGlobalPipes(createValidationPipe());
   app.useGlobalFilters(new ApiExceptionFilter());

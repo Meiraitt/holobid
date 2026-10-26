@@ -1,0 +1,18 @@
+{
+  "category": "Pokemon",
+  "id": "base1-4",
+  "illustrator": "Mitsuhiro Arita",
+  "image": "https://assets.tcgdex.net/en/base/base1/4",
+  "localId": "4",
+  "name": "Charizard",
+  "rarity": "Rare",
+  "set": {
+    "id": "base1",
+    "name": "Base Set"
+  },
+  "hp": 120,
+  "types": [
+    "Fire"
+  ],
+  "description": "Spits fire that is hot enough to melt boulders. Known to unintentionally cause forest fires."
+}
