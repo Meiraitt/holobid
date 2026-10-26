@@ -17,7 +17,27 @@ jobs:
   verify:
     name: Lint, types, builds and database tests
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    services:
+      main-db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: ephemeral-ci-main
+        ports: [5432/tcp]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+      audit-db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: ephemeral-ci-audit
+        ports: [5432/tcp]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      HOLOBID_CI_MAIN_CONTAINER: ${{ job.services.main-db.id }}
+      HOLOBID_CI_AUDIT_CONTAINER: ${{ job.services.audit-db.id }}
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6

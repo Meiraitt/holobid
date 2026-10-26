@@ -12,7 +12,8 @@ Sessões persistidas, refresh, logout e autorização estão implementados.
 Carteira, depósitos simulados idempotentes, catálogo TCGdex e persistência de
 imagens também estão disponíveis; as rotas estão descritas abaixo.
 Publicação, vitrine e cancelamento de lotes sem lances estão implementados.
-Auditoria pública, painéis e notificações Socket.IO entram nas próximas tasks. O frontend contém apenas a estrutura
+Lances, liquidação, comprovantes, auditoria pública, painéis, Socket.IO e
+demonstração persistente estão implementados. O frontend contém apenas a estrutura
 TypeScript da BE-01; React/Vite entra na FE-01.
 
 Requisitos
@@ -94,7 +95,7 @@ Ambos retornam {user: {id, email, role}, accessToken, expiresIn: 900} e
 configuram o cookie de refresh. Usuário, carteira e sessão são gravados
 na mesma transação do cadastro. O token de refresh nunca aparece no JSON.
 GET /api/v1/auth/me exige Authorization: Bearer <accessToken> e devolve
-apenas id/email/role. O seed de leiloeiro será implementado na task de seed.
+apenas id/email/role. O seed cria o leiloeiro de demonstração (ver seção BE-15).
 
 Email é normalizado com trim/lowercase; senha aceita 10–128 caracteres,
 sem trim ou truncamento. Argon2id usa m=19456 KiB, t=2, p=1 e salt aleatório.
@@ -156,9 +157,9 @@ Exemplo de login local (substituir por uma conta cadastrada):
       --data '{"email":"bidder@example.test","password":"your-password"}'
 
 SessionsService.authenticate expõe a identidade e o prazo de expiração
-para o futuro gateway. SessionRevocationEvents permite que BE-14 desconecte
+para o gateway Socket.IO. SessionRevocationEvents permite que BE-14 desconecte
 sockets após o commit do logout; falha no listener não desfaz a revogação.
-Sockets ainda não estão implementados. Sessões sobrevivem a reinícios,
+Sockets estão implementados na BE-14. Sessões sobrevivem a reinícios,
 desde que o banco e JWT_SECRET permaneçam os mesmos.
 
 Convenções HTTP
@@ -216,7 +217,7 @@ Os clients usam pools pequenos, conexão lazy e limites de espera/consulta;
 fecham as conexões no shutdown. Eles não disparam sondagens periódicas.
 A transação principal não inclui a base de auditoria: o protocolo de
 confirmação, HMAC e recuperação da BE-08 coordena commits separados. As
-primitivas internas e lances já existem; auditoria pública entra em BE-12.
+primitivas internas, lances e auditoria pública estão implementados.
 
 O Compose sobe somente PostgreSQL local, com dois bancos e papéis distintos,
 sem permissão de conexão cruzada e porta exposta apenas em 127.0.0.1:55432.
@@ -235,14 +236,14 @@ apps/api/src/common/http            Middleware, filtro, exceção e pipe.
 apps/api/src/modules/health         Controller, service e módulo de saúde.
 apps/api/src/database               Clients, pools e contexto transacional.
 apps/api/src/modules/auth           Credenciais, sessões, cookies e guards.
-apps/api/src/modules/auctions       Consulta de propriedade (sem rotas ainda).
+apps/api/src/modules/auctions       Publicação, vitrine, propriedade e cancelamento.
 apps/api/src/modules/users          Repository concreto de usuários.
-apps/api/src/modules/wallets        Repository concreto de carteiras.
+apps/api/src/modules/wallets        Carteira e depósitos simulados.
 apps/api/prisma                     Schema/migrations principal e audit/.
 apps/api/test                       HTTP, configuração e integração com banco.
 apps/api/scripts/test-database.mjs  Runner do PostgreSQL temporário.
 apps/web                           Frontend React/Vite, previsto na FE-01.
-packages/contracts/src             Tipos públicos HTTP e saúde, sem NestJS.
+packages/contracts/src             Contratos HTTP e Socket.IO, sem NestJS.
 
 Controllers recebem HTTP; services aplicam comportamento; repositories
 concretos acessam a persistência. O módulo de saúde delega a checagem de
@@ -273,11 +274,11 @@ concluir cada PR, rode npm ci antes de npm run check. Comandos individuais:
 
 test:api executa Jest/Supertest com a configuração HTTP real e providers
 substitutos somente para conectividade. As rotas _test existem apenas nos
-testes. test:db cria um container exclusivo com nome aleatório, porta local
-dinâmica e dados em memória. Aplica as migrations em bases vazias, repete
+testes. test:db cria dois containers exclusivos com nomes aleatórios, portas locais
+dinâmicas e dados em memória (ou usa os serviços efêmeros do job no CI). Aplica as migrations em bases vazias, repete
 para verificar idempotência e testa constraints, concorrência de reservas,
 rollback entre repositories, isolamento de credenciais e readiness.
-O runner ignora URLs externas/.env e remove seu próprio container ao final;
+O runner ignora URLs externas/.env e remove seus próprios containers ao final;
 não limpa volumes nem acessa bases existentes. A primeira execução pode
 baixar a imagem postgres:16-alpine. Não pula os testes se Docker faltar.
 Registre no PR os resultados reais e os cenários manuais da task.
@@ -508,9 +509,9 @@ Public history and audit
   Exit codes: 0 verified, 2 tampered, 3 incomplete, 1 invalid configuration.
     npm run audit:tamper-demo
   Requires Docker and installed development dependencies. Creates its own
-  disposable PostgreSQL container, ignores caller database URLs and .env,
+  disposable PostgreSQL containers, ignores caller database URLs and .env,
   migrates both databases, demonstrates mutation/restoration/tail deletion
-  through HTTP audit, then removes the container. No arbitrary fixture/URL
+  through HTTP audit, then removes the containers. No arbitrary fixture/URL
   arguments are accepted. Both CLI commands refuse NODE_ENV=production.
   There is no HTTP tamper, repair or destructive history endpoint.
 
@@ -605,3 +606,45 @@ Durable simulated demo
   No minute-by-minute database polling or external scheduling service is used.
   Deploy must preserve PostgreSQL and signing keys, and include apps/api/fixtures
   alongside dist. The seed CLI starts no HTTP server or background scheduler.
+
+Verificação integrada antes de publicar (BE-16)
+----------------------------------------------
+    npm ci
+    npm run check
+
+O check executa lint, tipos, builds, testes Jest e a bateria de aceitação
+HTTP. Docker deve estar disponível; cURL precisa estar no PATH. Os testes
+sempre criam PostgreSQL descartável: servidor principal e servidor de
+âncora independentes, com portas aleatórias e credenciais exclusivas de
+teste. Nunca leem URLs do deploy ou o .env para escolher a base alvo.
+As migrations são aplicadas duas vezes para testar instalação e replay.
+
+    npm run test:http
+    npm run test:http:live --workspace=@holobid/api
+
+O primeiro comando é determinístico e faz requisições cURL por TCP à API
+compilada, em um processo Node separado com configuração de produção.
+Usa PostgreSQL real, clientes Socket.IO (WebSocket e polling), fixtures
+reais da TCGdex e injeções de falha restritas ao preload de teste. Inclui
+permissões, inputs, cookies/refresh, idempotência, concorrência, precisão
+financeira, deadlines, alterações SQL, indisponibilidade das duas bases,
+queda da fonte externa, recuperação e liquidação sem clientes online.
+O preload controla somente relógio de domínio, respostas da fonte externa
+e falhas deliberadas; nunca faz parte do entrypoint normal da aplicação.
+As asserções verificam tanto HTTP quanto os efeitos persistidos.
+
+A variante :live acrescenta busca/importação usando a TCGdex e sua CDN
+reais. Execute após build:api. Requer internet e falha explicitamente se
+a fonte não responder; não transforma indisponibilidade em aprovação.
+O CI usa a variante determinística para não depender de um terceiro.
+HOLOBID_HTTP_REPORT=/caminho/resultado.json salva casos, requisições,
+status, códigos e duração; omite tokens, cookies e corpos de credenciais.
+
+GitHub Actions está configurado com dois serviços PostgreSQL efêmeros,
+sem secrets do deploy. A mesma sequência npm run check é obrigatória
+localmente antes de commitar. Configuração de CI não significa execução
+verde: enquanto a conta bloquear Actions, o resultado é somente local.
+
+Limites desta validação: não comprova telas React, CORS/rewrite no host
+real, HTTPS público, quotas da conta, avaliação visual ou o formulário de
+entrega. Repetir o smoke no deploy depois da configuração das contas.
