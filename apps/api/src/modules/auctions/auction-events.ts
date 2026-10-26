@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-export type AuctionChange = { auctionId: string; reason: 'RECHECK' | 'PUBLISHED' | 'BID_ACCEPTED' | 'CANCELLED' | 'STARTED' | 'ENDED' | 'AUDIT_CONFIRMED' };
+export type AuctionChange = { auctionId: string; reason: 'RECHECK' | 'PUBLISHED' | 'BID_ACCEPTED' | 'CANCELLED' | 'STARTED' | 'ENDED' | 'AUDIT_CONFIRMED'; extended?: boolean };
 @Injectable()
 export class AuctionEvents {
   private readonly listeners = new Set<(event: AuctionChange) => void>();

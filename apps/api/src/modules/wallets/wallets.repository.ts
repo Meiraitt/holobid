@@ -40,7 +40,7 @@ export class WalletsRepository {
     return wallet;
   }
 
-  credit(userId: string, amountCents: bigint, tx: TransactionContext) {
+  async credit(userId: string, amountCents: bigint, tx: TransactionContext) {
     return tx.wallet.update({ where: { userId }, data: { totalCents: { increment: amountCents }, version: { increment: 1 } } });
   }
 

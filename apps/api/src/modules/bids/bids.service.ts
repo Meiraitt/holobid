@@ -44,7 +44,7 @@ export class BidsService {
       const recovered = await this.idempotency.find<BidResult>(identity);
       return recovered ? this.resolve(recovered, operationKey, auctionId) : pending(operationKey, auctionId);
     }
-    let changed = false;
+    let changed = false, extended = false;
     let expectedHead: AuditHead | undefined;
     const execution = await this.protocol.run(operationKey, async (tx, prepare) => {
       const result = await this.idempotency.inTransaction<BidResult>(tx, identity, async () => {
@@ -70,6 +70,7 @@ export class BidsService {
         const wallet = locked.get(userId)!, amount = BigInt(amountCents);
         if (wallet.totalCents - wallet.reservedCents < amount) throw new ApiException(422, 'INSUFFICIENT_FUNDS', 'Insufficient available balance.');
         const endsAtAfter = snapshot.endsAt.getTime() - acceptedAt.getTime() <= 120_000 ? new Date(acceptedAt.getTime() + 120_000) : snapshot.endsAt;
+        extended = endsAtAfter > snapshot.endsAt;
         const value = { id: randomUUID(), auctionId, bidderId: userId, sequence: snapshot.bidCount + 1, amountCents: amount, acceptedAt, endsAtAfter, previousHash: snapshot.auditHead };
         await this.audit.assertPseudonymAvailable(auctionId, userId, tx);
         const bid = { ...value, ...this.crypto.bid(value) };
@@ -87,7 +88,7 @@ export class BidsService {
       if (changed) await prepare(auctionId, expectedHead!);
       return result;
     });
-    if (changed) this.events.publish({ auctionId, reason: execution.confirmation === 'CONFIRMED' ? 'BID_ACCEPTED' : 'RECHECK' });
+    if (changed) this.events.publish({ auctionId, reason: execution.confirmation === 'CONFIRMED' ? 'BID_ACCEPTED' : 'RECHECK', ...(extended && execution.confirmation === 'CONFIRMED' ? { extended: true } : {}) });
     if (execution.confirmation === 'CONFIRMED') return execution.value;
     if (!changed) return this.resolve(execution.value, operationKey, auctionId);
     return pending(operationKey, auctionId);

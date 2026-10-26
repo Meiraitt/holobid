@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 
 @Injectable()
 export class SessionRevocationEvents {
+  revision = 0;
   private readonly listeners = new Set<(sessionId: string) => void>();
   private readonly logger = new Logger(SessionRevocationEvents.name);
 
@@ -12,6 +13,7 @@ export class SessionRevocationEvents {
   }
 
   publish(sessionId: string): void {
+    this.revision++;
     for (const listener of this.listeners) {
       try { listener(sessionId); }
       catch { this.logger.error({ event: 'auth.revocation_listener_failed' }); }
