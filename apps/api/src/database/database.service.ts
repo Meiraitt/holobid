@@ -23,6 +23,14 @@ export class DatabaseService implements OnApplicationShutdown {
     return this.client.$transaction(work, { maxWait: 5_000, timeout: 10_000 });
   }
 
+  // Multi-query dashboards must see the same primary snapshot during settlement.
+  readSnapshot<T>(work: (tx: TransactionContext) => Promise<T>): Promise<T> {
+    return this.client.$transaction(async tx => {
+      await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+      return work(tx);
+    }, { isolationLevel: 'RepeatableRead', maxWait: 5_000, timeout: 10_000 });
+  }
+
   async ping(): Promise<void> {
     await this.client.$queryRaw`SELECT 1`;
   }

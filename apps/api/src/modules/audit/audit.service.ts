@@ -15,6 +15,9 @@ export class AuditService {
   async lockedSnapshot(auctionId: string, tx: TransactionContext) {
     await this.source.lock(auctionId, tx); return this.source.read(auctionId, tx);
   }
+  // For batch readers that already hold every Auction row lock. Reacquiring an
+  // advisory lock after a row lock would invert the writers' lock order.
+  readLockedSnapshot(auctionId: string, tx: TransactionContext) { return this.source.read(auctionId, tx); }
   async verify(auctionId: string): Promise<AuditVerdict> {
     try { return await this.database.transaction(async tx => this.verifyLocked(await this.lockedSnapshot(auctionId, tx), auctionId)); }
     catch { return verdict('INCOMPLETE', 'DEPENDENCY_UNAVAILABLE'); }

@@ -1,3 +1,4 @@
+import { AccountsModule } from './modules/accounts/accounts.module';
 import { HistoryModule } from './modules/history/history.module';
 import { SettlementsModule } from './modules/settlements/settlements.module';
 import process from 'node:process';
@@ -21,6 +22,7 @@ import { HealthModule } from './modules/health/health.module';
       validate: validateEnvironment,
     }),
     HealthModule,
+    AccountsModule,
     HistoryModule,
     AuthModule,
     AuditModule,
