@@ -1,3 +1,4 @@
+import { AuctionEvents } from './auction-events';
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import type { AuctionDetail, AuctionPublicationPending, CreateAuctionInput } from '@holobid/contracts';
@@ -29,7 +30,7 @@ function pending(operationId: string, auctionId: string): OperationResult<Auctio
 export class AuctionPublicationService {
   constructor(private readonly auctions: AuctionsRepository, private readonly catalog: CatalogImportService,
     private readonly idempotency: IdempotencyService, private readonly crypto: AuditCrypto, private readonly anchors: AuditAnchorRepository,
-    private readonly audit: AuditService, private readonly protocol: AuditProtocolService, private readonly clock: AuctionClock, private readonly limiter: AuctionPublishLimiter) {}
+    private readonly audit: AuditService, private readonly protocol: AuditProtocolService, private readonly clock: AuctionClock, private readonly limiter: AuctionPublishLimiter, private readonly events: AuctionEvents) {}
 
   private async resolve(result: OperationResult<AuctionDetail>, operationKey: string) {
     return await this.audit.reconcile(operationKey) === 'CONFIRMED' ? result : pending(operationKey, result.resourceId!);
@@ -72,6 +73,7 @@ export class AuctionPublicationService {
       if (changed) await prepare(id, null);
       return result;
     });
+    if (changed) this.events.publish({ auctionId: id, reason: execution.confirmation === 'CONFIRMED' ? 'PUBLISHED' : 'RECHECK' });
     if (execution.confirmation === 'CONFIRMED') return execution.value;
     if (!changed) return this.resolve(execution.value, operationKey);
     return pending(operationKey, execution.value.resourceId!);

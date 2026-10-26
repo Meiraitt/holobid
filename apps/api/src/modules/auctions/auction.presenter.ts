@@ -16,7 +16,7 @@ export function presentSummary(auction: SummarySource, now: Date): PublicAuction
     startingPriceCents: moneyToNumber(auction.startingPriceCents), currentBidCents: auction.currentBid ? moneyToNumber(auction.currentBid.amountCents) : null,
     minimumNextBidCents: next <= BigInt(MAX_MONEY_CENTS) ? moneyToNumber(next) : null, bidCount: auction.bidCount, version: auction.version, serverTime: now.toISOString() };
 }
-function attributes(value: Prisma.JsonValue): AuctionAttributes {
+export function auctionAttributes(value: Prisma.JsonValue): AuctionAttributes {
   if (!value || Array.isArray(value) || typeof value !== 'object') return {};
   const result: AuctionAttributes = {};
   if (value.category === 'Pokemon' || value.category === 'Trainer' || value.category === 'Energy') result.category = value.category;
@@ -28,7 +28,7 @@ function attributes(value: Prisma.JsonValue): AuctionAttributes {
 export function presentDetail(auction: AuditSnapshot, now: Date, integrity: AuditIntegrity, receipt: Receipt | null = null): AuctionDetail {
   const summary = presentSummary({ ...auction, currentBid: auction.bids.at(-1) ?? null }, now);
   const result: AuctionDetail = { ...summary, ...(auction.snapshot.description !== null ? { description: auction.snapshot.description } : {}),
-    attributes: attributes(auction.snapshot.attributes), minimumIncrementCents: moneyToNumber(auction.minimumIncrementCents), originalEndsAt: auction.originalEndsAt.toISOString(),
+    attributes: auctionAttributes(auction.snapshot.attributes), minimumIncrementCents: moneyToNumber(auction.minimumIncrementCents), originalEndsAt: auction.originalEndsAt.toISOString(),
     settlementStatus: auction.settlementStatus, auditUrl: `/api/v1/auctions/${auction.id}/audit`, confirmation: integrity === 'VERIFIED' ? 'CONFIRMED' : 'PENDING',
     auditIntegrity: integrity, canReceiveBids: summary.status === 'LIVE' && integrity === 'VERIFIED' && summary.minimumNextBidCents !== null };
   if (summary.status === 'ENDED' && auction.settlementStatus === 'COMPLETED') {

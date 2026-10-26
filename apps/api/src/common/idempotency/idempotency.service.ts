@@ -29,9 +29,11 @@ export class IdempotencyService {
   async inTransaction<T extends Prisma.InputJsonObject>(tx: TransactionContext, input: IdempotencyInput,
     work: (tx: TransactionContext) => Promise<OperationResult<T>>, recordId: string = randomUUID()): Promise<OperationResult<T>> {
     const requestHash = this.fingerprint(input.request);
+    // Audited operations also share a deterministic primary key. Either unique
+    // index can win a concurrent INSERT; lock the scoped row and check its hash below.
     await tx.$executeRaw`INSERT INTO "IdempotencyRecord" ("id", "userId", "operation", "key", "requestHash")
       VALUES (${recordId}::uuid, ${input.userId}::uuid, ${input.operation}, ${input.key}, ${requestHash})
-      ON CONFLICT ("userId", "operation", "key") DO NOTHING`;
+      ON CONFLICT DO NOTHING`;
     await tx.$queryRaw`SELECT "id" FROM "IdempotencyRecord"
       WHERE "userId" = ${input.userId}::uuid AND "operation" = ${input.operation} AND "key" = ${input.key} FOR UPDATE`;
     const record = await tx.idempotencyRecord.findUniqueOrThrow({ where: { userId_operation_key: this.scope(input) } });

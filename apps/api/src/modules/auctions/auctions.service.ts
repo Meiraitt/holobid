@@ -1,3 +1,4 @@
+import { AuctionEvents } from './auction-events';
 import { Injectable } from '@nestjs/common';
 import type { AuctionPage, OwnedAuctionDetail } from '@holobid/contracts';
 import type { Prisma } from '../../generated/main/client';
@@ -15,7 +16,7 @@ function notFound() { return new ApiException(404, 'AUCTION_NOT_FOUND', 'Auction
 @Injectable()
 export class AuctionsService {
   constructor(private readonly database: DatabaseService, private readonly auctions: AuctionsRepository,
-    private readonly audit: AuditService, private readonly idempotency: IdempotencyService, private readonly clock: AuctionClock, private readonly cursors: AuctionCursorService) {}
+    private readonly audit: AuditService, private readonly idempotency: IdempotencyService, private readonly clock: AuctionClock, private readonly cursors: AuctionCursorService, private readonly events: AuctionEvents) {}
 
   async list(query: AuctionQueryDto): Promise<AuctionPage> {
     const now = this.clock.now(), cursor = this.cursors.decode(query.cursor, query.status);
@@ -37,8 +38,8 @@ export class AuctionsService {
       return presentDetail(snapshot, this.clock.now(), integrity.integrity, receipt);
     });
   }
-  cancel(userId: string, id: string, key: string) {
-    return this.idempotency.execute<OwnedAuctionDetail>({ userId, key, operation: `POST /auctions/${id}/cancel`, request: {} }, async tx => {
+  async cancel(userId: string, id: string, key: string) {
+    const result = await this.idempotency.execute<OwnedAuctionDetail>({ userId, key, operation: `POST /auctions/${id}/cancel`, request: {} }, async tx => {
       const snapshot = await this.audit.lockedSnapshot(id, tx);
       if (!snapshot || snapshot.sellerId !== userId) throw notFound();
       if (snapshot.lifecycle === 'CANCELLED') {
@@ -52,5 +53,7 @@ export class AuctionsService {
       const updated = await this.auctions.cancel(id, tx);
       return { status: 200, resourceId: id, body: presentOwned(presentDetail({ ...snapshot, ...updated }, now, 'VERIFIED')) };
     });
+    this.events.publish({ auctionId: id, reason: 'CANCELLED' });
+    return result;
   }
 }

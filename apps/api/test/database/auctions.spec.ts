@@ -119,8 +119,10 @@ describe('Auction publication, public listings and cancellation', () => {
     const confirmed = await publish(body, key).expect(201);
     const ids = results.map(result => result.body.id ?? result.body.auctionId); expect(new Set([...ids, confirmed.body.id]).size).toBe(1);
     expect(await db.client.auction.count({ where: { sellerId: seller.id } })).toBe(1);
-    const conflictKey = randomUUID(); const conflict = await Promise.all([publish(body, conflictKey), publish({ ...body, startingPriceCents: 1234 }, conflictKey)]);
-    expect(conflict.map(result => result.status).sort()).toEqual([201, 409]);
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const conflictKey = randomUUID(); const conflict = await Promise.all([publish(body, conflictKey), publish({ ...body, startingPriceCents: 1234 }, conflictKey)]);
+      expect(conflict.map(result => result.status).sort()).toEqual([201, 409]);
+    }
   });
   it('keeps same keys independent across auctioneers', async () => {
     const other = await account('AUCTIONEER'), key = randomUUID(), body = input();
@@ -173,7 +175,7 @@ describe('Auction publication, public listings and cancellation', () => {
     expect(new Set(retrieved).size).toBe(4); expect(retrieved.sort()).toEqual(ids.sort());
     await list({ status: 'LIVE', cursor: first.body.nextCursor }).expect(400);
     for (const query of [{ status: 'CANCELLED' }, { limit: 101 }, { limit: 0 }, { limit: '1e2' }, { cursor: 'garbage' }, { sellerId: seller.id }]) await list(query).expect(400);
-    now = new Date('1900-01-01T00:00:00Z'); expect((await list({ status: 'ENDED' }).expect(200)).body).toMatchObject({ items: [], nextCursor: null });
+    now = new Date('2200-01-01T00:00:00Z'); expect((await list({ status: 'SCHEDULED' }).expect(200)).body).toMatchObject({ items: [], nextCursor: null });
   });
   it('soft-cancels only the owner lot, hides it publicly and preserves media and audit', async () => {
     const created = await publish().expect(201), id = created.body.id, key = randomUUID();

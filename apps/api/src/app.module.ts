@@ -1,3 +1,4 @@
+import { SettlementsModule } from './modules/settlements/settlements.module';
 import process from 'node:process';
 import { BidsModule } from './modules/bids/bids.module';
 import { Module } from '@nestjs/common';
@@ -23,6 +24,7 @@ import { HealthModule } from './modules/health/health.module';
     AuditModule,
     AuctionsModule,
     BidsModule,
+    SettlementsModule,
     WalletsModule,
     CatalogModule,
   ],

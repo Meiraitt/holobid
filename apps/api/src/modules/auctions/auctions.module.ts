@@ -1,3 +1,4 @@
+import { AuctionEvents } from './auction-events';
 import { AuthModule } from '../auth/auth.module';
 import { AuditModule } from '../audit/audit.module';
 import { CatalogModule } from '../catalog/catalog.module';
@@ -14,6 +15,6 @@ import { AuctionsRepository } from './auctions.repository';
 import { AuctionOwnershipService } from './auction-ownership.service';
 
 @Module({ imports: [DatabaseModule, AuthModule, AuditModule, CatalogModule, IdempotencyModule], controllers: [AuctionsController],
-  providers: [AuctionsRepository, AuctionOwnershipService, AuctionsService, AuctionPublicationService, AuctionCursorService, AuctionClock, AuctionPublishLimiter],
-  exports: [AuctionsRepository, AuctionOwnershipService, AuctionClock] })
+  providers: [AuctionEvents, AuctionsRepository, AuctionOwnershipService, AuctionsService, AuctionPublicationService, AuctionCursorService, AuctionClock, AuctionPublishLimiter],
+  exports: [AuctionsRepository, AuctionOwnershipService, AuctionClock, AuctionEvents] })
 export class AuctionsModule {}
