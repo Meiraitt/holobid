@@ -17,6 +17,8 @@ enum AuditIntentState {
 
 // Separate database and credentials. Never add relations to the main database.
 model AuditCheckpoint {
+  keyId     String   @default("v1") @db.VarChar(32)
+  algorithmVersion Int @default(1)
   auctionId String   @id @db.Uuid
   sequence  Int
   headHash  String   @db.Char(64)
@@ -28,6 +30,9 @@ model AuditCheckpoint {
 model AuditIntent {
   id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   auctionId        String           @db.Uuid
+  keyId            String           @default("v1") @db.VarChar(32)
+  algorithmVersion Int              @default(1)
+  proofHash        String?          @db.Char(64)
   operationKey     String           @unique @db.Uuid
   expectedSequence Int?
   expectedHeadHash String?          @db.Char(64)

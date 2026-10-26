@@ -343,3 +343,36 @@ Catalog and media (BE-07)
   are technical demo data; Pokemon card artwork belongs to its respective owners.
   References: https://tcgdex.dev/rest/filtering-sorting-pagination
   https://tcgdex.dev/rest/card and https://tcgdex.dev/assets
+
+Audit primitives (BE-08)
+  Configure AUDIT_HMAC_SECRET and AUDIT_PSEUDONYM_SECRET with separate random
+  32..64-byte base64url keys (same generation command as JWT_SECRET). All three
+  keys must differ. Keep AUDIT_KEY_ID=v1 and these keys stable across deploys.
+  Version 1 canonicalizes sorted JSON objects and fixed arrays, UTC timestamps,
+  and integer cents as decimal strings. SHA-256 hashes are authenticated with
+  HMAC-SHA-256. Pseudonyms are per-auction, 16 hex characters, checked for collisions.
+  Genesis binds the seller, initial rules, dates, card snapshot and image digest.
+  Verification recomputes the entire chain, identity association and media digest,
+  then compares count/head against the independent audit database. Unknown keys
+  or versions and unavailable dependencies are INCOMPLETE, never VERIFIED.
+  A main-database rollback to an older valid chain is detected by its newer anchor.
+  Keys and the audit database must remain outside the main-database attack boundary.
+  Compromising the application keys and both databases is outside this protection.
+  Wallet balances and mutable lifecycle flags are not a cryptographically signed
+  accounting history; audited bid effects are bound by the operation proof below.
+
+  Protocol: lock the auction, write the main operation and idempotency result,
+  PREPARE the next head in the separate database, commit the main transaction,
+  then COMMIT the anchor using CAS. Preparation failure rolls back main writes.
+  Failure after main commit, including a lost commit acknowledgement, stays
+  PENDING. Only a callback failure before requesting COMMIT permits ABORTED.
+  Abort is scoped to a unique attempt, so it cannot clear an older uncertain intent.
+  Known-aborted operations may retry; unresolved operations cannot be overwritten.
+  Main operation IDs are deterministic UUIDs scoped to user, route and request key.
+  Recovery locks the main auction and requires the complete signed chain, current
+  head and matching operation proof (request/result, ledger effects, reservations).
+  It excludes mutable wallet totals, which can change in other legitimate actions.
+  Missing/changed evidence remains PENDING; never infer rollback from absent rows
+  or rebuild anchors from the main database. No automatic discard of old intents.
+  AuditService.reconcile is available for retries/recovery; scheduler wiring is
+  BE-11 and the public history/audit endpoint is BE-12. No cloud provision occurred.

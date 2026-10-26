@@ -5,6 +5,9 @@ export interface ApiEnvironment {
   DATABASE_URL: string;
   AUDIT_DATABASE_URL: string;
   JWT_SECRET: string;
+  AUDIT_HMAC_SECRET: string;
+  AUDIT_PSEUDONYM_SECRET: string;
+  AUDIT_KEY_ID: string;
 }
 
 export class EnvironmentValidationError extends Error {
@@ -59,11 +62,18 @@ export function validateEnvironment(raw: Record<string, unknown>): ApiEnvironmen
     errors.push('AUDIT_DATABASE_URL');
   }
 
-  const jwtSecret = raw.JWT_SECRET;
-  if (typeof jwtSecret !== 'string' || !/^[A-Za-z0-9_-]{43,86}$/.test(jwtSecret) ||
-      Buffer.from(jwtSecret, 'base64url').length < 32 || Buffer.from(jwtSecret, 'base64url').toString('base64url') !== jwtSecret) {
-    errors.push('JWT_SECRET');
+  const secrets = ['JWT_SECRET', 'AUDIT_HMAC_SECRET', 'AUDIT_PSEUDONYM_SECRET'] as const;
+  const seen = new Set<string>();
+  for (const name of secrets) {
+    const value = raw[name];
+    if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{43,86}$/.test(value) ||
+        Buffer.from(value, 'base64url').length < 32 || Buffer.from(value, 'base64url').toString('base64url') !== value || seen.has(value)) {
+      errors.push(name);
+    }
+    if (typeof value === 'string') seen.add(value);
   }
+  const keyId = raw.AUDIT_KEY_ID ?? 'v1';
+  if (typeof keyId !== 'string' || !/^[A-Za-z0-9_-]{1,32}$/.test(keyId)) errors.push('AUDIT_KEY_ID');
 
   if (errors.length > 0) throw new EnvironmentValidationError(errors);
   return {
@@ -72,6 +82,9 @@ export function validateEnvironment(raw: Record<string, unknown>): ApiEnvironmen
     WEB_ORIGIN: origin as string,
     DATABASE_URL: raw.DATABASE_URL as string,
     AUDIT_DATABASE_URL: raw.AUDIT_DATABASE_URL as string,
-    JWT_SECRET: jwtSecret as string,
+    JWT_SECRET: raw.JWT_SECRET as string,
+    AUDIT_HMAC_SECRET: raw.AUDIT_HMAC_SECRET as string,
+    AUDIT_PSEUDONYM_SECRET: raw.AUDIT_PSEUDONYM_SECRET as string,
+    AUDIT_KEY_ID: keyId as string,
   };
 }

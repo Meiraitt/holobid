@@ -138,6 +138,8 @@ model Auction {
   version               Int              @default(0)
   currentBidId          String?          @db.Uuid
   bidCount              Int              @default(0)
+  auditKeyId            String           @default("v1") @db.VarChar(32)
+  auditVersion          Int              @default(1)
   auditHead             String           @db.Char(64)
   auditMac              String           @db.Char(64)
   settlementStatus      SettlementStatus @default(NOT_DUE)
