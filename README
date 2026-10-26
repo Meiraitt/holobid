@@ -5,15 +5,17 @@ Plataforma de leilões de cartas Pokémon, com catálogo TCGdex.
 
 Estado atual
 ------------
-Monorepo com a base HTTP NestJS 11, configuração de ambiente, validação de
-DTOs, erros padronizados, correlação de requisições e endpoints de saúde.
-O frontend ainda contém somente a estrutura TypeScript da BE-01. React/Vite,
-banco de dados e funcionalidades de leilão entram nas próximas tasks.
+Monorepo com a base HTTP NestJS 11 e persistência PostgreSQL/Prisma: schemas,
+migrations, constraints e contexto transacional. Autenticação e operações
+de leilão ainda serão implementadas. O frontend contém apenas a estrutura
+TypeScript da BE-01; React/Vite entra na FE-01.
 
 Requisitos
 ----------
 - Node.js 24.22.1 (fixado em .nvmrc).
 - npm 11.21.1 (fixado em packageManager).
+- Docker para PostgreSQL local e testes de integração. Não é necessário
+  instalar PostgreSQL, psql ou Prisma globalmente.
 
 Use um gerenciador de versões ou instale essas versões antes dos comandos.
 Se já usa nvm, execute nvm install e nvm use na raiz. A instalação rejeita
@@ -26,6 +28,9 @@ Na raiz:
     npm ci
     cp apps/api/.env.example apps/api/.env
     cp apps/web/.env.example apps/web/.env
+    docker compose up -d --wait postgres
+    npm run db:migrate
+    npm run db:audit:migrate
 
 O NestJS carrega apps/api/.env quando iniciado pelos scripts abaixo.
 Variáveis do processo têm precedência. NODE_ENV=test ignora o arquivo .env.
@@ -35,10 +40,15 @@ Variáveis da API:
   Exemplo local: http://localhost:5173. Produção exige HTTPS.
 - PORT: inteiro de 1 a 65535; padrão 3000.
 - NODE_ENV: development, test ou production; padrão development.
+- DATABASE_URL: conexão PostgreSQL principal; obrigatória.
+- AUDIT_DATABASE_URL: conexão de auditoria em outro banco; obrigatória.
+- DIRECT_DATABASE_URL / DIRECT_AUDIT_DATABASE_URL: opcionais, usadas somente
+  pelo CLI para migrations quando as URLs de runtime apontam para poolers.
+  Sem elas, os comandos de migration usam as respectivas URLs de runtime.
 
 Configuração inválida impede a inicialização e informa somente os nomes
-das variáveis inválidas, sem imprimir os valores. Ainda não são exigidas
-variáveis de banco ou autenticação, que serão introduzidas nessas tasks.
+das variáveis inválidas, sem imprimir os valores. Autenticação ainda não
+exige configuração nesta etapa.
 VITE_* será consumido pelo frontend e nunca deve conter segredos.
 
 Executar a API
@@ -58,9 +68,13 @@ Para executar o build:
 
 GET /api/v1/health/live retorna 200 com {"status":"ok"}, sem acessar banco.
 GET /api/v1/health/ready retorna 200 com {"status":"ready"} depois da
-inicialização; retorna 503 se a aplicação estiver encerrando. Atualmente
-verifica apenas o ciclo de vida da aplicação. A sondagem real de banco
-será integrada na BE-03, quando a persistência existir.
+inicialização e SELECT 1 nos dois bancos; retorna 503 genérico se qualquer
+um estiver indisponível ou se a aplicação estiver encerrando. Não expõe
+URLs, SQL ou credenciais. A API pode iniciar com um banco indisponível;
+liveness continua respondendo. Migrations são um passo explícito antes
+do deploy, não executadas automaticamente ao iniciar a API.
+Use health/live para sondagens periódicas do provedor: health/ready acessa
+os bancos e pode acordar instâncias Neon suspensas por inatividade.
 
 Convenções HTTP
 ---------------
@@ -81,18 +95,71 @@ Convenções HTTP
 - Respostas HTTP usam Cache-Control: no-store nesta etapa; mídia imutável
   terá sua política própria quando for implementada.
 
+Persistência e migrations
+-------------------------
+    npm run db:generate
+    npm run db:migrate
+    npm run db:audit:migrate
+
+npm ci gera os dois clients Prisma; não precisa de banco ou de credenciais
+para gerar/buildar. Os clients ficam em src/generated, ignorados pelo Git.
+Prisma 7.10.1 usa o adapter pg e geração CommonJS, compatível com NestJS 11.
+Referências:
+https://www.prisma.io/docs/orm/v7/prisma-schema/overview/generators
+https://www.prisma.io/docs/orm/v7/core-concepts/supported-databases/postgresql
+
+Migrations são SQL versionado e transacional, aplicado por migrate deploy.
+Reexecutar esses comandos não reaplica migrations concluídas. Não usar
+prisma db push: CHECKs e índices parciais são mantidos no SQL e não estão
+integralmente representados no schema Prisma. Novas alterações exigem
+nova migration; não editar migrations que já chegaram a uma base compartilhada.
+
+Valores monetários usam BIGINT em centavos. A carteira garante
+0 <= reservado <= total <= 100.000.000.000 centavos. Disponível é calculado.
+Há unicidade de email normalizado, sequência por leilão, reserva ativa,
+liquidação, recibo, entrada financeira e chave de idempotência. FKs compostas
+impedem referências a lances de outro lote ou reservas de outro licitante.
+Datas são timestamptz. Relações históricas restringem exclusões em cascata.
+
+Services abrem DatabaseService.transaction e passam o mesmo tx aos
+repositories. Escritas dos repositories exigem esse contexto; nenhum
+repository abre uma transação independente. UsersRepository e
+WalletsRepository são a primeira implementação concreta. Os demais
+repositories entram junto das respectivas regras de negócio.
+
+Os clients usam pools pequenos, conexão lazy e limites de espera/consulta;
+fecham as conexões no shutdown. Eles não disparam sondagens periódicas.
+A transação principal não inclui a base de auditoria: o protocolo de
+confirmação, HMAC e recuperação será implementado na BE-08. Ter as tabelas
+não significa que a auditoria de lances já esteja implementada.
+
+O Compose sobe somente PostgreSQL local, com dois bancos e papéis distintos,
+sem permissão de conexão cruzada e porta exposta apenas em 127.0.0.1:55432.
+As senhas de local-init.sql são exclusivamente locais. Os dados de
+desenvolvimento persistem em um volume; docker compose stop postgres para
+o serviço sem apagar esses dados. Não reutilizar essas credenciais em deploy.
+Em produção, o plano usa projetos/credenciais separados para que alterações
+na base principal não também alterem as âncoras. O isolamento local por
+papéis não protege contra alguém que controle o administrador do cluster.
+Nenhuma conta ou infraestrutura de nuvem foi criada nesta task.
+
 Estrutura
 ---------
 apps/api/src/config                 Validação das variáveis de ambiente.
 apps/api/src/common/http            Middleware, filtro, exceção e pipe.
 apps/api/src/modules/health         Controller, service e módulo de saúde.
-apps/api/test                       Testes de configuração e limites HTTP.
+apps/api/src/database               Clients, pools e contexto transacional.
+apps/api/src/modules/users          Repository concreto de usuários.
+apps/api/src/modules/wallets        Repository concreto de carteiras.
+apps/api/prisma                     Schema/migrations principal e audit/.
+apps/api/test                       HTTP, configuração e integração com banco.
+apps/api/scripts/test-database.mjs  Runner do PostgreSQL temporário.
 apps/web                           Frontend React/Vite, previsto na FE-01.
 packages/contracts/src             Tipos públicos HTTP e saúde, sem NestJS.
 
 Controllers recebem HTTP; services aplicam comportamento; repositories
-concretos entram junto da persistência na BE-03. O módulo de saúde não
-cria repository fictício. Banco e regras de leilão permanecem fora dele.
+concretos acessam a persistência. O módulo de saúde delega a checagem de
+conectividade aos providers de banco; regras de leilão ficam nos domínios.
 O deploy planejado usa Northflank para a API e Vercel para o frontend,
 com builds independentes a partir do mesmo repositório.
 
@@ -102,8 +169,8 @@ Verificações antes de cada commit
     git diff --check
     git diff --cached --check
 
-check executa lint, typecheck, builds e testes da API, parando na primeira
-falha. Corrija o problema e repita antes de commitar; valide novamente se
+check executa lint, typecheck, builds, testes HTTP e testes PostgreSQL,
+parando na primeira falha. Docker precisa estar em execução. Corrija o problema e repita antes de commitar; valide novamente se
 alterar código após os checks. Essa é uma etapa manual, sem hook instalado.
 
 Na primeira instalação, após alterar dependências/lockfile e antes de
@@ -113,14 +180,20 @@ concluir cada PR, rode npm ci antes de npm run check. Comandos individuais:
     npm run typecheck
     npm run build
     npm run test:api
+    npm run test:db
     npm run build:api
     npm run build:web
 
-Os testes Jest/Supertest usam a configuração HTTP real em uma aplicação de
-teste, sem banco e sem serviços externos. As rotas _test existem somente
-nos testes; não são registradas na aplicação executável. Testes financeiros
-e de persistência serão adicionados nas respectivas tasks e usarão banco
-isolado. Registre no PR os resultados reais e os cenários manuais da task.
+test:api executa Jest/Supertest com a configuração HTTP real e providers
+substitutos somente para conectividade. As rotas _test existem apenas nos
+testes. test:db cria um container exclusivo com nome aleatório, porta local
+dinâmica e dados em memória. Aplica as migrations em bases vazias, repete
+para verificar idempotência e testa constraints, concorrência de reservas,
+rollback entre repositories, isolamento de credenciais e readiness.
+O runner ignora URLs externas/.env e remove seu próprio container ao final;
+não limpa volumes nem acessa bases existentes. A primeira execução pode
+baixar a imagem postgres:16-alpine. Não pula os testes se Docker faltar.
+Registre no PR os resultados reais e os cenários manuais da task.
 
 O GitHub Actions chama npm ci e o mesmo npm run check. Enquanto sua execução
 estiver indisponível, a validação local permanece obrigatória; ela não

@@ -1,0 +1,43 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "../../src/generated/audit"
+  moduleFormat        = "cjs"
+  importFileExtension = ""
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AuditIntentState {
+  PREPARED
+  COMMITTED
+  ABORTED
+}
+
+// Separate database and credentials. Never add relations to the main database.
+model AuditCheckpoint {
+  auctionId String   @id @db.Uuid
+  sequence  Int
+  headHash  String   @db.Char(64)
+  headMac   String   @db.Char(64)
+  version   Int      @default(0)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+}
+
+model AuditIntent {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  auctionId        String           @db.Uuid
+  operationKey     String           @unique @db.Uuid
+  expectedSequence Int?
+  expectedHeadHash String?          @db.Char(64)
+  nextSequence     Int
+  nextHeadHash     String           @db.Char(64)
+  nextHeadMac      String           @db.Char(64)
+  state            AuditIntentState @default(PREPARED)
+  createdAt        DateTime         @default(now()) @db.Timestamptz(3)
+  resolvedAt       DateTime?        @db.Timestamptz(3)
+  // One PREPARED intent per auction, enforced by a partial unique SQL index.
+
+  @@index([auctionId, createdAt])
+}

@@ -1,24 +1,41 @@
 import { validateEnvironment } from '../src/config/environment';
 
+const databaseConfig = {
+  DATABASE_URL: 'postgresql://main:secret@localhost/main',
+  AUDIT_DATABASE_URL: 'postgresql://audit:secret@localhost/audit',
+};
+
 describe('Environment configuration', () => {
   it('requires an explicit frontend origin without exposing values', () => {
-    expect(() => validateEnvironment({})).toThrow('WEB_ORIGIN');
-    expect(() => validateEnvironment({ WEB_ORIGIN: 'https://user:private-password@example.com' }))
+    expect(() => validateEnvironment({ ...databaseConfig })).toThrow('WEB_ORIGIN');
+    expect(() => validateEnvironment({ ...databaseConfig, WEB_ORIGIN: 'https://user:private-password@example.com' }))
       .toThrow('Invalid environment configuration: WEB_ORIGIN.');
   });
 
   it.each(['0', '65536', '3e3', 'abc', '', '12.5'])('rejects invalid PORT %s', (PORT) => {
-    expect(() => validateEnvironment({ WEB_ORIGIN: 'http://localhost:5173', PORT })).toThrow('PORT');
+    expect(() => validateEnvironment({ ...databaseConfig, WEB_ORIGIN: 'http://localhost:5173', PORT })).toThrow('PORT');
   });
 
   it.each(['*', 'https://example.com/path', 'https://example.com/', 'https://example.com?q=secret', 'null'])('rejects a non-origin value %s', (WEB_ORIGIN) => {
-      expect(() => validateEnvironment({ WEB_ORIGIN })).toThrow('WEB_ORIGIN');
+      expect(() => validateEnvironment({ ...databaseConfig, WEB_ORIGIN })).toThrow('WEB_ORIGIN');
     });
 
+  it('requires valid and separate database URLs without exposing credentials', () => {
+    for (const name of ['DATABASE_URL', 'AUDIT_DATABASE_URL']) {
+      for (const value of [undefined, '', 'https://private:secret@example.com/db', 'postgresql://localhost']) {
+        expect(() => validateEnvironment({ ...databaseConfig, WEB_ORIGIN: 'https://example.com', [name]: value }))
+          .toThrow(`Invalid environment configuration: ${name}.`);
+      }
+    }
+    expect(() => validateEnvironment({ ...databaseConfig, WEB_ORIGIN: 'https://example.com',
+      AUDIT_DATABASE_URL: 'postgresql://another:secret@localhost:5432/main' }))
+      .toThrow('Invalid environment configuration: AUDIT_DATABASE_URL.');
+  });
+
   it('requires HTTPS in production and validates NODE_ENV', () => {
-    expect(() => validateEnvironment({ NODE_ENV: 'production', WEB_ORIGIN: 'http://example.com' })).toThrow('WEB_ORIGIN');
-    expect(() => validateEnvironment({ NODE_ENV: 'invalid', WEB_ORIGIN: 'https://example.com' })).toThrow('NODE_ENV');
-    expect(validateEnvironment({ NODE_ENV: 'production', PORT: '8080', WEB_ORIGIN: 'https://example.com' }))
-      .toEqual({ NODE_ENV: 'production', PORT: 8080, WEB_ORIGIN: 'https://example.com' });
+    expect(() => validateEnvironment({ ...databaseConfig, NODE_ENV: 'production', WEB_ORIGIN: 'http://example.com' })).toThrow('WEB_ORIGIN');
+    expect(() => validateEnvironment({ ...databaseConfig, NODE_ENV: 'invalid', WEB_ORIGIN: 'https://example.com' })).toThrow('NODE_ENV');
+    expect(validateEnvironment({ ...databaseConfig, NODE_ENV: 'production', PORT: '8080', WEB_ORIGIN: 'https://example.com' }))
+      .toEqual({ ...databaseConfig, NODE_ENV: 'production', PORT: 8080, WEB_ORIGIN: 'https://example.com' });
   });
 });

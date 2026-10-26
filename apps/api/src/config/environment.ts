@@ -2,6 +2,8 @@ export interface ApiEnvironment {
   NODE_ENV: 'development' | 'test' | 'production';
   PORT: number;
   WEB_ORIGIN: string;
+  DATABASE_URL: string;
+  AUDIT_DATABASE_URL: string;
 }
 
 export class EnvironmentValidationError extends Error {
@@ -39,10 +41,29 @@ export function validateEnvironment(raw: Record<string, unknown>): ApiEnvironmen
     errors.push('WEB_ORIGIN');
   }
 
+  const databases = new Map<string, string>();
+  for (const name of ['DATABASE_URL', 'AUDIT_DATABASE_URL'] as const) {
+    try {
+      const value = raw[name];
+      if (typeof value !== 'string') throw new Error();
+      const url = new URL(value);
+      if (!['postgres:', 'postgresql:'].includes(url.protocol) || !url.hostname ||
+          !url.username || url.pathname.length < 2 || url.hash) throw new Error();
+      databases.set(name, `${url.hostname}:${url.port || '5432'}${url.pathname}`);
+    } catch {
+      errors.push(name);
+    }
+  }
+  if (databases.has('DATABASE_URL') && databases.get('DATABASE_URL') === databases.get('AUDIT_DATABASE_URL')) {
+    errors.push('AUDIT_DATABASE_URL');
+  }
+
   if (errors.length > 0) throw new EnvironmentValidationError(errors);
   return {
     NODE_ENV: nodeEnv as ApiEnvironment['NODE_ENV'],
     PORT: port,
     WEB_ORIGIN: origin as string,
+    DATABASE_URL: raw.DATABASE_URL as string,
+    AUDIT_DATABASE_URL: raw.AUDIT_DATABASE_URL as string,
   };
 }
