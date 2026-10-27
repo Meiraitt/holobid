@@ -15,6 +15,14 @@ export class ApiRequestError extends Error {
 }
 
 const messages: Record<string, string> = {
+  AUCTION_NOT_STARTED: 'Este leilão ainda não começou. Aguarde o início.',
+  ALREADY_LEADING: 'Você já está na liderança deste lote.',
+  BID_BELOW_MINIMUM:
+    'Outro lance alterou o valor mínimo. Confira o mínimo atualizado antes de tentar novamente.',
+  BID_LIMIT_REACHED: 'Este lote atingiu o valor máximo permitido para lances.',
+  IDEMPOTENCY_KEY_REUSED:
+    'Esta solicitação já foi usada com outros dados. Recarregue e confira seu histórico.',
+  AUCTION_NOT_FOUND: 'Este lote não existe ou foi retirado da vitrine.',
   AUCTION_HAS_BIDS: 'Este lote recebeu um lance e não pode mais ser cancelado.',
   AUCTION_ENDED: 'Este leilão já foi encerrado. Atualizamos os dados da sala.',
   AUCTION_CANCELLED: 'Este lote foi cancelado.',
@@ -23,7 +31,7 @@ const messages: Record<string, string> = {
     'O catálogo está temporariamente indisponível. Tente novamente em instantes.',
   ITEM_NOT_FOUND: 'Esta carta não está mais disponível no catálogo. Escolha outra carta.',
   AUDIT_UNAVAILABLE:
-    'Não foi possível confirmar a publicação agora. Consulte novamente em instantes.',
+    'Não foi possível confirmar a operação agora. Consulte novamente em instantes.',
   AUDIT_PENDING: 'A confirmação ainda está em andamento. Consulte novamente em instantes.',
 
   INVALID_CREDENTIALS: 'E-mail ou senha incorretos. Confira os dados e tente novamente.',

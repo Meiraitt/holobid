@@ -1,36 +1,28 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 
 import { toast } from '../../../components/ui/toast';
 import { formatDate } from '../../../lib/format';
 
 export function Countdown({
   deadline,
+  now,
   scheduled = false,
 }: {
   deadline: string;
+  now: number;
   scheduled?: boolean;
 }) {
-  const [now, setNow] = useState(() => Date.now());
   const previousDeadline = useRef(deadline);
 
   useEffect(() => {
     if (!scheduled && Date.parse(deadline) > Date.parse(previousDeadline.current)) {
-      toast.info(
-        'Prazo prorrogado',
-        `O lote agora encerra em ${formatDate(deadline)}. Confira o novo contador.`,
-      );
+      toast.info('Prazo prorrogado', `O lote agora encerra em ${formatDate(deadline)}.`);
     }
 
     previousDeadline.current = deadline;
   }, [deadline, scheduled]);
 
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-
-    return () => window.clearInterval(timer);
-  }, []);
-
-  const seconds = Math.max(0, Math.floor((Date.parse(deadline) - now) / 1000));
+  const seconds = Math.max(0, Math.ceil((Date.parse(deadline) - now) / 1000));
   const days = Math.floor(seconds / 86400);
   const hours = Math.floor((seconds % 86400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);

@@ -1,21 +1,23 @@
-import { useState } from 'react';
+import { useInfiniteQuery } from '@tanstack/react-query';
 
 import { Button } from '../../../components/ui/button';
-import type { DemoBid } from '../../../demo/types';
 import { formatDate, formatMoney } from '../../../lib/format';
+import { errorMessage } from '../../../services/api-error';
+import { historyOptions } from '../room-queries';
 
 export function BidHistory({
-  bids,
-  showMine,
-  acceptsBids,
+  auctionId,
+  myPseudonym,
 }: {
-  bids: DemoBid[];
-  showMine: boolean;
-  acceptsBids: boolean;
+  auctionId: string;
+  myPseudonym?: string;
 }) {
-  const [visibleCount, setVisibleCount] = useState(5);
-  const orderedBids = [...bids].sort((left, right) => Date.parse(right.at) - Date.parse(left.at));
-  const visibleBids = orderedBids.slice(0, visibleCount);
+  const query = useInfiniteQuery(historyOptions(auctionId));
+  const bids = [
+    ...new Map(
+      (query.data?.pages.flatMap((page) => page.items) ?? []).map((bid) => [bid.id, bid]),
+    ).values(),
+  ].sort((a, b) => b.sequence - a.sequence);
 
   return (
     <section aria-labelledby="bid-history-heading" className="space-y-4">
@@ -25,47 +27,60 @@ export function BidHistory({
         </h2>
         <span className="text-sm text-muted-foreground">Mais recentes primeiro</span>
       </div>
-      {bids.length === 0 ? (
-        <p className="py-8 text-muted-foreground">
-          {acceptsBids
-            ? 'Nenhum lance registrado. O primeiro pode ser seu.'
-            : 'Nenhum lance foi registrado neste lote.'}
-        </p>
+      {query.isPending ? (
+        <p role="status">Carregando lances…</p>
+      ) : query.isError && !query.data ? null : bids.length === 0 ? (
+        <p className="py-8 text-muted-foreground">Nenhum lance registrado neste lote.</p>
       ) : (
-        <>
-          <ol className="divide-y divide-border">
-            {visibleBids.map((bid) => (
-              <li key={bid.id} className="flex items-center justify-between gap-4 py-4">
-                <div className="min-w-0">
-                  <p
-                    className={`break-words font-semibold ${bid.isMine && showMine ? 'text-success' : ''}`}
-                  >
-                    {bid.isMine && showMine
-                      ? 'Você'
-                      : bid.bidder === 'Você'
-                        ? 'Lic. 6A20'
-                        : bid.bidder}
-                  </p>
-                  <time dateTime={bid.at} className="mt-1 block text-sm text-muted-foreground">
-                    {formatDate(bid.at)}
-                  </time>
-                </div>
-                <p className="shrink-0 text-lg font-semibold tabular-nums">
-                  {formatMoney(bid.amountCents)}
+        <ol className="divide-y divide-border">
+          {bids.map((bid) => (
+            <li key={bid.id} className="flex items-center justify-between gap-4 py-4">
+              <div className="min-w-0">
+                <p
+                  className={`break-words font-semibold ${myPseudonym === bid.bidderPseudonym ? 'text-success' : ''}`}
+                >
+                  {myPseudonym === bid.bidderPseudonym
+                    ? `Você · ${bid.bidderPseudonym}`
+                    : bid.bidderPseudonym}
                 </p>
-              </li>
-            ))}
-          </ol>
-          {visibleCount < orderedBids.length && (
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => setVisibleCount((count) => count + 5)}
-            >
-              Ver lances anteriores
-            </Button>
-          )}
-        </>
+                <time
+                  dateTime={bid.acceptedAt}
+                  className="mt-1 block text-sm text-muted-foreground"
+                >
+                  {formatDate(bid.acceptedAt)}
+                </time>
+              </div>
+              <p className="shrink-0 text-lg font-semibold tabular-nums">
+                {formatMoney(bid.amountCents)}
+              </p>
+            </li>
+          ))}
+        </ol>
+      )}
+      {query.isError && (
+        <div role="alert" className="space-y-3">
+          <p>
+            {query.data ? 'O histórico pode estar desatualizado. ' : ''}
+            {errorMessage(query.error)}
+          </p>
+          <Button
+            variant="outline"
+            onClick={() =>
+              void (query.isFetchNextPageError ? query.fetchNextPage() : query.refetch())
+            }
+          >
+            Tentar novamente
+          </Button>
+        </div>
+      )}
+      {query.hasNextPage && (
+        <Button
+          variant="outline"
+          loading={query.isFetchingNextPage}
+          onClick={() => void query.fetchNextPage()}
+        >
+          Ver lances anteriores
+        </Button>
       )}
     </section>
   );

@@ -1,178 +1,221 @@
-import type { FormEvent } from 'react';
-import { useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { type FormEvent, useEffect, useRef, useState } from 'react';
 
-import { Button, buttonVariants } from '../../../components/ui/button';
+import type { AuctionDetail, MyAuctionState, WalletResponse } from '@holobid/contracts';
+
+import { Button } from '../../../components/ui/button';
 import { Field, Input } from '../../../components/ui/input';
 import { toast } from '../../../components/ui/toast';
-import { useDemo } from '../../../demo/demo-provider';
-import type { DemoAuction } from '../../../demo/types';
-import { formatMoney, parseMoney } from '../../../lib/format';
+import { formatMoney } from '../../../lib/format';
+import { api } from '../../../services';
+import { errorMessage } from '../../../services/api-error';
+import { bidAmount, bidAttempt } from '../bid-attempt';
 
 export function BidForm({
   auction,
+  userId,
+  wallet,
+  position,
   updatesPaused,
 }: {
-  auction: DemoAuction;
+  auction: AuctionDetail;
+  userId: string;
+  wallet: WalletResponse;
+  position: MyAuctionState;
   updatesPaused: boolean;
 }) {
-  const { user, availableCents, placeBid } = useDemo();
-  const minimumCents =
-    auction.bidCount > 0
-      ? auction.currentBidCents + auction.incrementCents
-      : auction.startingBidCents;
-  const [amount, setAmount] = useState(() => (minimumCents / 100).toFixed(2).replace('.', ','));
+  const cache = useQueryClient();
+  const minimum = auction.minimumNextBidCents;
+  const [amount, setAmount] = useState(() => ((minimum ?? 0) / 100).toFixed(2).replace('.', ','));
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const active = useRef(true);
+  const submitting = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const parsedAmount = parseMoney(amount);
-  const leading = auction.participation === 'leading';
-  const canAffordMinimum = availableCents >= minimumCents;
+  const [attempt] = useState(() => {
+    try {
+      return bidAttempt(api.auctions.bid, sessionStorage, userId, auction.id);
+    } catch {
+      return null;
+    }
+  });
+  const pending = attempt?.operation;
+  const amountCents = bidAmount(amount);
+  const disabled =
+    updatesPaused || !auction.canReceiveBids || position.isLeading || minimum === null;
 
-  function rejectBid(message: string) {
-    setError(message);
-    toast.error('Lance não registrado', message);
-    inputRef.current?.focus();
-  }
+  useEffect(() => {
+    active.current = true;
 
-  function submitBid(event: FormEvent<HTMLFormElement>) {
+    return () => {
+      active.current = false;
+    };
+  }, []);
+
+  async function send(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    if (parsedAmount === null || parsedAmount <= 0) {
-      rejectBid('Informe um valor em reais, como 400,00.');
-
+    if (submitting.current || !attempt) {
       return;
     }
 
-    if (parsedAmount < minimumCents) {
-      rejectBid(`O próximo lance deve ser de pelo menos ${formatMoney(minimumCents)}.`);
+    if (!pending) {
+      const message = disabled
+        ? 'Aguarde os dados atualizados da sala.'
+        : amountCents === null
+          ? 'Informe um valor de R$ 0,01 a R$ 1.000.000.000,00, como 100,00.'
+          : minimum !== null && amountCents < minimum
+            ? `O próximo lance deve ser de pelo menos ${formatMoney(minimum)}.`
+            : amountCents > wallet.availableCents
+              ? `Seu saldo disponível é ${formatMoney(wallet.availableCents)}.`
+              : '';
 
-      return;
+      if (message) {
+        setError(message);
+        toast.error('Lance não enviado', message);
+        inputRef.current?.focus();
+
+        return;
+      }
     }
 
-    if (parsedAmount > availableCents) {
-      rejectBid(
-        `Seu saldo disponível é ${formatMoney(availableCents)}. Adicione saldo simulado para continuar.`,
-      );
-
-      return;
-    }
+    submitting.current = true;
+    setBusy(true);
+    setError('');
 
     try {
-      placeBid(auction.id, parsedAmount);
-      setError('');
-      toast.success(
-        'Lance registrado na demonstração',
-        `${formatMoney(parsedAmount)} reservados. Acompanhe sua posição nesta sala.`,
-      );
-    } catch (caught) {
-      rejectBid(
-        caught instanceof Error
-          ? caught.message
-          : 'Não foi possível registrar o lance. Tente novamente.',
-      );
+      const result = await attempt.submit(pending ? undefined : { amountCents: amountCents! });
+
+      if (!active.current) {
+        return;
+      }
+
+      if (result.data.confirmation === 'CONFIRMED') {
+        // A replay may describe an older bid. Refetch current balances/position instead of
+        // replacing them with the historical response or claiming the bidder still leads.
+        toast.success(
+          'Lance registrado',
+          `${formatMoney(result.data.bid.amountCents)}. Confira sua posição atualizada na sala.`,
+        );
+      } else {
+        toast.info(
+          'Lance aguardando confirmação',
+          'Consulte novamente a mesma solicitação antes de enviar outro lance.',
+        );
+      }
+    } catch (failure) {
+      if (active.current) {
+        const message = errorMessage(failure);
+
+        setError(message);
+        toast.error(
+          attempt.operation ? 'Lance ainda não confirmado' : 'Lance não registrado',
+          message,
+        );
+      }
+    } finally {
+      if (active.current) {
+        // Keep the form locked until the independent snapshots have been refreshed.
+        await Promise.all([
+          cache.invalidateQueries({ queryKey: ['public'] }),
+          cache.invalidateQueries({ queryKey: ['private', userId] }),
+        ]);
+        if (active.current) {
+          submitting.current = false;
+          setBusy(false);
+        }
+      }
     }
   }
 
-  if (!user) {
+  if (!attempt) {
     return (
-      <div className="space-y-3">
-        <p className="text-muted-foreground">Entre na sua conta para participar deste leilão.</p>
-        <Link
-          to={`/login?returnTo=${encodeURIComponent(`/auctions/${auction.id}`)}`}
-          className={buttonVariants({ size: 'lg', className: 'w-full' })}
-        >
-          Entrar para dar lance
-        </Link>
-      </div>
-    );
-  }
-
-  if (user.role === 'auctioneer') {
-    return (
-      <div className="space-y-3">
-        <p className="text-sm text-muted-foreground">
-          {auction.mine
-            ? 'Este lote foi publicado por você. Acompanhe os lances e o resultado por aqui.'
-            : 'Para dar lances nesta demonstração, selecione a conta de licitante no cabeçalho.'}
-        </p>
-        <Link
-          to="/my-auctions"
-          className={buttonVariants({ variant: 'outline', className: 'w-full' })}
-        >
-          Gerenciar meus lotes
-        </Link>
-      </div>
+      <p role="alert">
+        Não foi possível recuperar os lances desta aba. Recarregue a página e confira seu histórico
+        antes de enviar outro lance.
+      </p>
     );
   }
 
   return (
-    <form onSubmit={submitBid} noValidate className="space-y-4">
-      <Field label="Seu lance (R$)" htmlFor="bid-amount" error={error || undefined}>
-        <Input
-          ref={inputRef}
-          id="bid-amount"
-          name="bidAmount"
-          inputMode="decimal"
-          autoComplete="off"
-          aria-invalid={Boolean(error)}
-          aria-describedby={error ? 'bid-amount-error' : 'bid-reservation-hint'}
-          value={amount}
-          disabled={leading || updatesPaused}
-          onChange={(event) => {
-            setAmount(event.target.value);
-            setError('');
-          }}
-          className="h-13 text-xl tabular-nums"
-        />
-      </Field>
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          disabled={leading || updatesPaused}
-          className="-ml-3 text-info"
-          onClick={() => {
-            setAmount((minimumCents / 100).toFixed(2).replace('.', ','));
-            setError('');
-            inputRef.current?.focus();
-          }}
-        >
-          Usar mínimo {formatMoney(minimumCents)}
-        </Button>
-        <p className="text-muted-foreground">Disponível {formatMoney(availableCents)}</p>
-      </div>
+    <form onSubmit={(event) => void send(event)} noValidate className="space-y-4">
+      {pending ? (
+        <div role="status" className="space-y-2 border-l-2 border-warning pl-3">
+          <p className="font-semibold">Lance aguardando confirmação</p>
+          <p>
+            {formatMoney(pending.input.amountCents)} · Consulte novamente para recuperar o resultado
+            da mesma solicitação.
+          </p>
+        </div>
+      ) : (
+        <>
+          <Field label="Seu lance (R$)" htmlFor="bid-amount" error={error || undefined}>
+            <Input
+              ref={inputRef}
+              id="bid-amount"
+              name="bidAmount"
+              inputMode="decimal"
+              autoComplete="off"
+              aria-invalid={Boolean(error)}
+              aria-describedby={error ? 'bid-amount-error' : 'bid-reservation-hint'}
+              value={amount}
+              disabled={disabled || busy}
+              onChange={(event) => {
+                setAmount(event.target.value);
+                setError('');
+              }}
+              className="h-13 text-xl tabular-nums"
+            />
+          </Field>
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+            {minimum !== null && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={disabled || busy}
+                className="-ml-3 text-info"
+                onClick={() => {
+                  setAmount((minimum / 100).toFixed(2).replace('.', ','));
+                  setError('');
+                  inputRef.current?.focus();
+                }}
+              >
+                Usar mínimo {formatMoney(minimum)}
+              </Button>
+            )}
+            <p className="text-muted-foreground">Disponível {formatMoney(wallet.availableCents)}</p>
+          </div>
+        </>
+      )}
+      {pending && error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
       <Button
         type="submit"
         size="lg"
+        loading={busy}
+        disabled={!pending && disabled}
         className="h-auto min-h-12 w-full whitespace-normal py-3 text-center"
-        disabled={leading || updatesPaused || !canAffordMinimum}
       >
-        {leading
-          ? 'Você já está na liderança'
-          : updatesPaused
-            ? 'Aguardando atualização'
-            : !canAffordMinimum
-              ? 'Saldo insuficiente'
-              : parsedAmount !== null && parsedAmount > 0
-                ? `Dar lance de ${formatMoney(parsedAmount)}`
-                : 'Dar lance'}
+        {pending
+          ? 'Consultar lance'
+          : position.isLeading
+            ? 'Você já está na liderança'
+            : disabled
+              ? 'Aguardando liberação dos lances'
+              : amountCents === null
+                ? 'Dar lance'
+                : `Dar lance de ${formatMoney(amountCents)}`}
       </Button>
       <p id="bid-reservation-hint" className="text-sm leading-relaxed text-muted-foreground">
         O valor fica reservado enquanto você lidera. Se for superado, ele volta ao saldo disponível.
       </p>
-      {!canAffordMinimum && !leading && (
-        <div className="space-y-2 border-l-2 border-warning pl-3">
-          <p className="text-sm text-warning">
-            Faltam {formatMoney(minimumCents - availableCents)} para cobrir o próximo lance.
-          </p>
-          <Link
-            to="/wallet"
-            className="inline-flex min-h-11 items-center font-semibold text-info underline-offset-4 hover:underline"
-          >
-            Adicionar saldo simulado
-          </Link>
-        </div>
+      {minimum !== null && wallet.availableCents < minimum && !position.isLeading && !pending && (
+        <p className="border-l-2 border-warning pl-3 text-sm text-warning">
+          Seu saldo disponível não cobre o lance mínimo de {formatMoney(minimum)}.
+        </p>
       )}
     </form>
   );
