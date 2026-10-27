@@ -14,7 +14,7 @@ imagens também estão disponíveis; as rotas estão descritas abaixo.
 Publicação, vitrine e cancelamento de lotes sem lances estão implementados.
 Lances, liquidação, comprovantes, auditoria pública, painéis, Socket.IO e
 demonstração persistente estão implementados. O frontend React/Vite possui todas
-as views visuais, autenticação e vitrine pública integradas. Abas e paginação
+as views visuais, autenticação, vitrine pública e publicação de leilões integradas. Abas e paginação
 consultam a API; início/fim são reconciliados a cada 15 segundos e ao retomar o foco.
 O detalhe de lotes reais é somente leitura até a integração de lances (FE-08).
 Carteira, painéis, participações e auditoria ainda exibem dados de demonstração.
@@ -830,3 +830,22 @@ Executa os serviços HTTP e as opções de paginação do frontend contra NestJS
 compilado e PostgreSQL descartável. O upstream TCGdex é controlado apenas no
 processo de teste para reproduzir estados, cancelamento e indisponibilidade.
 Incluído em npm run check e, portanto, no estágio checks do Docker/Northflank.
+
+Publicação pelo frontend
+-----------------------
+A busca do catálogo tem debounce, paginação e cancelamento de consultas antigas.
+A seleção carrega atributos da carta antes de permitir publicação. Datas do
+navegador são enviadas como UTC; dinheiro é convertido para centavos inteiros.
+Somente externalItemId, preços e datas são enviados para criar o lote.
+
+Um envio pendente mantém sua chave e payload em sessionStorage, separados por
+conta e aba, sem salvar tokens. Duplo clique compartilha a mesma requisição.
+Após resposta incerta, 202 ou reload, “Consultar publicação” repete a mesma
+operação. Dados ficam bloqueados até confirmação; erros definitivos permitem
+corrigir o formulário. O sucesso invalida a vitrine e abre acesso ao lote real.
+O backend continua responsável por autorização, validação e idempotência.
+
+npm run test:auctions também cobre catálogo indisponível, valores/datas inválidos,
+permissões, duplo envio, resposta perdida depois do commit e 202 real por falha
+de confirmação no banco de auditoria. Injeções de falhas só existem no preload
+do processo de testes e não são importadas pela aplicação.

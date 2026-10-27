@@ -118,3 +118,15 @@ RealtimeRepository.prototype.lot = async function (...args) {
 
 // Buffer is explicitly imported so future test-only byte manipulation cannot depend on globals.
 void Buffer;
+
+// Leave a real prepared anchor pending so frontend acceptance can replay a genuine 202.
+const { AuditAnchorRepository } = compiled('modules/audit/audit-anchor.repository.js');
+const commitAnchor = AuditAnchorRepository.prototype.commit;
+
+AuditAnchorRepository.prototype.commit = async function (...args) {
+  if (control().pendingPublication) {
+    throw new Error('Test: audit confirmation temporarily unavailable');
+  }
+
+  return commitAnchor.apply(this, args);
+};

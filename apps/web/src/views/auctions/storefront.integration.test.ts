@@ -13,6 +13,7 @@ import { ApiClient } from '../../services/api-client';
 import { authService } from '../../services/auth-service';
 import { createOperation } from '../../services/operations';
 import { resourceServices } from '../../services/resource-services';
+import { PublicationAttempt } from '../create-auction/publication';
 
 import { auctionCardData, auctionListOptions } from './auction-queries';
 
@@ -25,6 +26,7 @@ const sql = new pg.Client({ connectionString: process.env.DATABASE_URL });
 const cache = createQueryClient();
 const nativeFetch = globalThis.fetch;
 const requests: number[] = [];
+let losePublicationResponse = false;
 const control = process.env.HOLOBID_HTTP_CONTROL!;
 let token = '';
 let now = 0;
@@ -50,6 +52,15 @@ beforeAll(async () => {
     const response = await nativeFetch(url, { ...options, headers });
 
     requests.push(response.status);
+    if (
+      losePublicationResponse &&
+      new URL(url).pathname === '/api/v1/auctions' &&
+      options.method === 'POST' &&
+      response.ok
+    ) {
+      losePublicationResponse = false;
+      throw new TypeError('Test: response lost after server commit');
+    }
 
     return response;
   });
@@ -65,7 +76,9 @@ afterAll(async () => {
   vi.unstubAllGlobals();
   cache.clear();
   await sql.end();
-  process.stdout.write(`Storefront: ${requests.length} real HTTP requests to NestJS/PostgreSQL.\n`);
+  process.stdout.write(
+    `Storefront/publication: ${requests.length} real HTTP requests to NestJS/PostgreSQL.\n`,
+  );
 });
 
 describe('public storefront over real HTTP', () => {
@@ -155,5 +168,166 @@ describe('public storefront over real HTTP', () => {
       status: 400,
     });
     await expect(anonymous.auctions.detail(randomUUID())).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe('card search and publication over real HTTP', () => {
+  let sellerId = '';
+  const storage = new Map<string, string>();
+  const journal = {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storage.set(key, value);
+    },
+    removeItem: (key: string) => {
+      storage.delete(key);
+    },
+  };
+  const input = (): CreateAuctionInput => ({
+    externalItemId: 'base1-58',
+    startingPriceCents: 12345,
+    minimumIncrementCents: 1,
+    startsAt: new Date(now - 1000).toISOString(),
+    endsAt: new Date(now + 3600000).toISOString(),
+  });
+  const count = async () =>
+    (await sql.query('SELECT count(*)::int AS n FROM "Auction" WHERE "sellerId"=$1', [sellerId]))
+      .rows[0].n;
+
+  beforeAll(async () => {
+    configure({ provider: 'fixture' });
+
+    const credentials = {
+      email: `publication-${randomUUID()}@holobid.test`,
+      password: 'Publication-2026!',
+    };
+    const registered = await auth.register(credentials);
+
+    sellerId = registered.user.id;
+    await sql.query(`UPDATE "User" SET role='AUCTIONEER' WHERE id=$1`, [sellerId]);
+    token = (await auth.login(credentials)).accessToken;
+  });
+
+  it('searches cards, loads selected details and handles empty search results', async () => {
+    const page = await api.catalog.search({ q: 'Pikachu', limit: 12 });
+
+    expect(page.items[0]?.externalId).toBe('base1-58');
+    expect(await api.catalog.detail(page.items[0]!.externalId)).toMatchObject({
+      title: 'Pikachu',
+      setName: 'Base Set',
+    });
+    expect((await api.catalog.search({ q: 'empty-search' })).items).toEqual([]);
+  });
+  it('surfaces source errors, permits retry and preserves public lots', async () => {
+    configure({ provider: 'offline' });
+    await expect(api.catalog.search({ q: randomUUID() })).rejects.toMatchObject({
+      status: 503,
+      problem: { code: 'CATALOG_UNAVAILABLE' },
+    });
+    expect((await anonymous.auctions.list()).items.length).toBeGreaterThan(0);
+    configure({ provider: 'fixture' });
+    expect((await api.catalog.search({ q: 'Pikachu' })).items.length).toBeGreaterThan(0);
+  });
+  it('rejects publication when CDN is offline, preserves fields and allows a corrected retry', async () => {
+    const before = await count();
+    const attempt = new PublicationAttempt(api.auctions.create, journal, sellerId);
+
+    configure({ provider: 'offline' });
+    await expect(attempt.submit(input())).rejects.toMatchObject({
+      status: 503,
+      problem: { code: 'CATALOG_UNAVAILABLE' },
+    });
+    expect(attempt.operation).toBeUndefined();
+    expect(await count()).toBe(before);
+    configure({ provider: 'fixture' });
+    expect((await attempt.submit(input())).data.confirmation).toBe('CONFIRMED');
+    expect(await count()).toBe(before + 1);
+  });
+  it('rejects invalid publication values/dates through actual HTTP without creating rows', async () => {
+    const before = await count();
+
+    for (const patch of [
+      { startingPriceCents: 0 },
+      { minimumIncrementCents: -1 },
+      { endsAt: new Date(now - 10000).toISOString() },
+    ]) {
+      await expect(
+        api.auctions.create(createOperation({ ...input(), ...patch })),
+      ).rejects.toMatchObject({ status: 400 });
+    }
+
+    expect(await count()).toBe(before);
+  });
+  it('coalesces double submit and confirms one persisted lot', async () => {
+    const before = await count();
+    const attempt = new PublicationAttempt(api.auctions.create, journal, sellerId);
+    const first = attempt.submit(input());
+    const second = attempt.submit(input());
+
+    expect(first).toBe(second);
+
+    const result = await first;
+
+    expect(result.status).toBe(201);
+    expect(result.data.confirmation).toBe('CONFIRMED');
+    expect(await count()).toBe(before + 1);
+    expect(attempt.operation).toBeUndefined();
+  });
+  it('recovers an actually committed publication after a lost response and reload', async () => {
+    const before = await count();
+    const attempt = new PublicationAttempt(api.auctions.create, journal, sellerId);
+
+    losePublicationResponse = true;
+    await expect(attempt.submit(input())).rejects.toMatchObject({ kind: 'network' });
+    expect(await count()).toBe(before + 1);
+
+    const original = attempt.operation;
+    const restored = new PublicationAttempt(api.auctions.create, journal, sellerId);
+
+    expect(restored.operation).toEqual(original);
+    expect((await restored.submit()).data.confirmation).toBe('CONFIRMED');
+    expect(await count()).toBe(before + 1);
+    expect(restored.operation).toBeUndefined();
+  });
+  it('recovers genuine 202 audit confirmation using the same operation while provider is offline', async () => {
+    const before = await count();
+    const attempt = new PublicationAttempt(api.auctions.create, journal, sellerId);
+
+    configure({ pendingPublication: true });
+
+    const pending = await attempt.submit(input());
+
+    expect(pending.status).toBe(202);
+    expect(pending.data.confirmation).toBe('PENDING');
+
+    const restored = new PublicationAttempt(api.auctions.create, journal, sellerId);
+
+    configure({ pendingPublication: false, provider: 'offline' });
+
+    const confirmed = await restored.submit();
+
+    expect(confirmed.status).toBe(201);
+    expect((confirmed.data as AuctionDetail).id).toBe(
+      'auctionId' in pending.data ? pending.data.auctionId : 'missing',
+    );
+    expect(await count()).toBe(before + 1);
+    configure({ provider: 'fixture' });
+  });
+  it('denies catalog and publishing to a bidder through actual HTTP', async () => {
+    const sellerToken = token;
+    const bidder = await auth.register({
+      email: `bidder-${randomUUID()}@holobid.test`,
+      password: 'Publication-2026!',
+    });
+
+    token = bidder.accessToken;
+    try {
+      await expect(api.catalog.search()).rejects.toMatchObject({ status: 403 });
+      await expect(api.auctions.create(createOperation(input()))).rejects.toMatchObject({
+        status: 403,
+      });
+    } finally {
+      token = sellerToken;
+    }
   });
 });
