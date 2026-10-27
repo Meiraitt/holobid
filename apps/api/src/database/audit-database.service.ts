@@ -1,8 +1,10 @@
 import { Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient, Prisma } from '../generated/audit/client';
+
 import type { ApiEnvironment } from '../config/environment';
+import { Prisma, PrismaClient } from '../generated/audit/client';
+
 import { postgresOptions } from './postgres-options';
 
 export type AuditTransactionContext = Prisma.TransactionClient;

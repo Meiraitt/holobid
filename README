@@ -650,6 +650,29 @@ Limites desta validação: não comprova telas React, CORS/rewrite no host
 real, HTTPS público, quotas da conta, avaliação visual ou o formulário de
 entrega. Repetir o smoke no deploy depois da configuração das contas.
 
+Formatação do código
+--------------------
+
+Regras versionadas em prettier.config.mjs, .prettierignore, eslint.config.mjs
+e .editorconfig. Para aplicar o padrão ou apenas verificar:
+
+    npm run format
+    npm run format:check
+    npm run lint
+
+Prettier usa dois espaços, aspas simples, ponto e vírgula, largura de 100
+colunas e quebra de linha LF. ESLint separa grupos de imports (efeitos
+colaterais, Node, bibliotecas, workspace, diretório pai e diretório atual),
+declarações, funções, métodos e blocos. Condicionais usam chaves e cada
+variável tem sua própria declaração. Declarações consecutivas podem ficar
+juntas quando formam um grupo; os grupos ficam separados do código seguinte.
+
+npm run format aplica ESLint --fix e depois Prettier. npm run check verifica
+formatação sem alterar arquivos, tanto no GitHub quanto no build Northflank.
+Clientes Prisma gerados, fixtures com checksum, migrations aplicadas,
+lockfile, segredos e documentos locais não são reformatados pelo Prettier.
+No editor, use a extensão Prettier e a configuração local deste projeto.
+
 Deploy da API com Docker (BE-17)
 -------------------------------
 Build context: raiz do monorepo. Dockerfile: apps/api/Dockerfile.

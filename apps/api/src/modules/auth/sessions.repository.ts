@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+
 import { DatabaseService, TransactionContext } from '../../database/database.service';
 
 const publicUserSelect = { id: true, email: true, role: true } as const;
@@ -12,8 +13,10 @@ export class SessionsRepository {
   }
 
   findByRefreshHash(refreshTokenHash: string) {
-    return this.database.client.authSession.findUnique({ where: { refreshTokenHash },
-      include: { user: { select: publicUserSelect } } });
+    return this.database.client.authSession.findUnique({
+      where: { refreshTokenHash },
+      include: { user: { select: publicUserSelect } },
+    });
   }
 
   findActive(id: string, userId: string) {
@@ -31,6 +34,9 @@ export class SessionsRepository {
   }
 
   revoke(id: string, userId: string, tx: TransactionContext) {
-    return tx.authSession.updateMany({ where: { id, userId, revokedAt: null }, data: { revokedAt: new Date() } });
+    return tx.authSession.updateMany({
+      where: { id, userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
   }
 }

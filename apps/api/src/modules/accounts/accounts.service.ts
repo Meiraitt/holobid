@@ -1,75 +1,182 @@
 import { Injectable } from '@nestjs/common';
 import { isUUID } from 'class-validator';
-import type { AuctioneerSummary, MyAuctionState, OwnedAuctionPage, ParticipationPage } from '@holobid/contracts';
+
+import type {
+  AuctioneerSummary,
+  MyAuctionState,
+  OwnedAuctionPage,
+  ParticipationPage,
+} from '@holobid/contracts';
+
 import { ApiException } from '../../common/http/api.exception';
 import { moneyToNumber } from '../../common/money';
 import { SignedCursorService } from '../../common/pagination/signed-cursor.service';
 import { DatabaseService } from '../../database/database.service';
-import { AuditCrypto } from '../audit/audit-crypto.service';
-import { AuditService } from '../audit/audit.service';
-import { AuctionClock } from '../auctions/auction-clock';
 import { presentDetail, presentOwned, presentSummary } from '../auctions/auction.presenter';
-import { WalletsRepository } from '../wallets/wallets.repository';
+import { AuctionClock } from '../auctions/auction-clock';
+import { AuditService } from '../audit/audit.service';
+import { AuditCrypto } from '../audit/audit-crypto.service';
 import { presentWallet } from '../wallets/wallet.presenter';
-import { AccountsRepository, AccountPagePosition } from './accounts.repository';
-import { ParticipationQueryDto, OwnedAuctionQueryDto } from './account.dto';
+import { WalletsRepository } from '../wallets/wallets.repository';
+
+import { OwnedAuctionQueryDto, ParticipationQueryDto } from './account.dto';
 import { presentMyAuction } from './account.presenter';
+import { AccountPagePosition, AccountsRepository } from './accounts.repository';
 
 @Injectable()
 export class AccountsService {
-  constructor(private readonly database: DatabaseService, private readonly accounts: AccountsRepository, private readonly crypto: AuditCrypto,
-    private readonly audit: AuditService, private readonly wallets: WalletsRepository, private readonly clock: AuctionClock, private readonly cursors: SignedCursorService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly accounts: AccountsRepository,
+    private readonly crypto: AuditCrypto,
+    private readonly audit: AuditService,
+    private readonly wallets: WalletsRepository,
+    private readonly clock: AuctionClock,
+    private readonly cursors: SignedCursorService,
+  ) {}
+
   private position(cursor: string | undefined, scope: string): AccountPagePosition | undefined {
-    const decoded = this.cursors.decode(cursor, scope); if (!decoded) return undefined;
+    const decoded = this.cursors.decode(cursor, scope);
+
+    if (!decoded) {
+      return undefined;
+    }
+
     const [timestamp, id] = decoded;
-    if (decoded.length !== 2 || !timestamp || !id || !isUUID(id, '4')) return this.cursors.invalid();
+
+    if (decoded.length !== 2 || !timestamp || !id || !isUUID(id, '4')) {
+      return this.cursors.invalid();
+    }
+
     const createdAt = new Date(timestamp);
-    if (!Number.isFinite(createdAt.getTime()) || createdAt.toISOString() !== timestamp) return this.cursors.invalid();
+
+    if (!Number.isFinite(createdAt.getTime()) || createdAt.toISOString() !== timestamp) {
+      return this.cursors.invalid();
+    }
+
     return { createdAt, id };
   }
+
   private next(rows: AccountPagePosition[], limit: number, scope: string) {
     const last = rows[limit - 1];
-    return rows.length > limit && last ? this.cursors.encode(scope, [last.createdAt.toISOString(), last.id]) : null;
+
+    return rows.length > limit && last
+      ? this.cursors.encode(scope, [last.createdAt.toISOString(), last.id])
+      : null;
   }
+
   myAuction(userId: string, id: string): Promise<MyAuctionState> {
-    return this.database.readSnapshot(async tx => {
+    return this.database.readSnapshot(async (tx) => {
       const lot = await this.accounts.auction(id, tx);
-      if (!lot || lot.lifecycle === 'CANCELLED') throw new ApiException(404, 'AUCTION_NOT_FOUND', 'Auction not found.');
-      const ranks = await this.accounts.ranks([id], tx), reservations = await this.accounts.reservations([id], userId, tx);
-      return presentMyAuction(lot, userId, this.crypto.pseudonym(id, userId), ranks, reservations[0]?.amountCents ?? 0n, this.clock.now());
+
+      if (!lot || lot.lifecycle === 'CANCELLED') {
+        throw new ApiException(404, 'AUCTION_NOT_FOUND', 'Auction not found.');
+      }
+
+      const ranks = await this.accounts.ranks([id], tx);
+      const reservations = await this.accounts.reservations([id], userId, tx);
+
+      return presentMyAuction(
+        lot,
+        userId,
+        this.crypto.pseudonym(id, userId),
+        ranks,
+        reservations[0]?.amountCents ?? 0n,
+        this.clock.now(),
+      );
     });
   }
+
   participations(userId: string, query: ParticipationQueryDto): Promise<ParticipationPage> {
-    const scope = `participations:${userId}:${query.filter}`, position = this.position(query.cursor, scope);
-    return this.database.readSnapshot(async tx => {
+    const scope = `participations:${userId}:${query.filter}`;
+    const position = this.position(query.cursor, scope);
+
+    return this.database.readSnapshot(async (tx) => {
       const now = this.clock.now();
-      const rows = await this.accounts.participations(userId, query.filter, now, query.limit + 1, position, tx), page = rows.slice(0, query.limit);
-      const ids = page.map(row => row.id), ranks = await this.accounts.ranks(ids, tx), reservations = await this.accounts.reservations(ids, userId, tx);
-      return { items: page.map(lot => ({ auction: presentSummary(lot, now),
-        ...presentMyAuction(lot, userId, this.crypto.pseudonym(lot.id, userId), ranks, reservations.find(row => row.auctionId === lot.id)?.amountCents ?? 0n, now) })),
-        nextCursor: this.next(rows, query.limit, scope), serverTime: now.toISOString() };
+      const rows = await this.accounts.participations(
+        userId,
+        query.filter,
+        now,
+        query.limit + 1,
+        position,
+        tx,
+      );
+      const page = rows.slice(0, query.limit);
+      const ids = page.map((row) => row.id);
+      const ranks = await this.accounts.ranks(ids, tx);
+      const reservations = await this.accounts.reservations(ids, userId, tx);
+
+      return {
+        items: page.map((lot) => ({
+          auction: presentSummary(lot, now),
+          ...presentMyAuction(
+            lot,
+            userId,
+            this.crypto.pseudonym(lot.id, userId),
+            ranks,
+            reservations.find((row) => row.auctionId === lot.id)?.amountCents ?? 0n,
+            now,
+          ),
+        })),
+        nextCursor: this.next(rows, query.limit, scope),
+        serverTime: now.toISOString(),
+      };
     });
   }
+
   owned(userId: string, query: OwnedAuctionQueryDto): Promise<OwnedAuctionPage> {
-    const scope = `owned:${userId}:${query.status ?? 'ALL'}`, position = this.position(query.cursor, scope);
-    return this.database.transaction(async tx => {
-      const now = this.clock.now(), rows = await this.accounts.lockOwnedPage(userId, query.status, now, query.limit + 1, position, tx);
+    const scope = `owned:${userId}:${query.status ?? 'ALL'}`;
+    const position = this.position(query.cursor, scope);
+
+    return this.database.transaction(async (tx) => {
+      const now = this.clock.now();
+      const rows = await this.accounts.lockOwnedPage(
+        userId,
+        query.status,
+        now,
+        query.limit + 1,
+        position,
+        tx,
+      );
       const items: OwnedAuctionPage['items'] = [];
+
       for (const row of rows.slice(0, query.limit)) {
         const lot = await this.audit.readLockedSnapshot(row.id, tx);
-        if (!lot || lot.sellerId !== userId) throw new ApiException(404, 'AUCTION_NOT_FOUND', 'Auction not found.');
-        const result = await this.audit.verifyLocked(lot, lot.id), receipt = await this.accounts.receipt(lot.id, tx);
+
+        if (!lot || lot.sellerId !== userId) {
+          throw new ApiException(404, 'AUCTION_NOT_FOUND', 'Auction not found.');
+        }
+
+        const result = await this.audit.verifyLocked(lot, lot.id);
+        const receipt = await this.accounts.receipt(lot.id, tx);
+
         items.push(presentOwned(presentDetail(lot, now, result.integrity, receipt)));
       }
-      return { items, nextCursor: this.next(rows, query.limit, scope), serverTime: now.toISOString() };
+
+      return {
+        items,
+        nextCursor: this.next(rows, query.limit, scope),
+        serverTime: now.toISOString(),
+      };
     });
   }
+
   summary(userId: string): Promise<AuctioneerSummary> {
-    return this.database.readSnapshot(async tx => {
-      const sales = await this.accounts.completedSales(userId, tx), withoutWinnerCount = await this.accounts.withoutWinner(userId, tx);
+    return this.database.readSnapshot(async (tx) => {
+      const sales = await this.accounts.completedSales(userId, tx);
+      const withoutWinnerCount = await this.accounts.withoutWinner(userId, tx);
       const wallet = await this.wallets.findByUserId(userId, tx);
-      if (!wallet) throw new Error('Wallet invariant violated.');
-      return { totalReceivedCents: moneyToNumber(sales._sum.amountCents ?? 0n), settledCount: sales._count, withoutWinnerCount, wallet: presentWallet(wallet, this.clock.now()) };
+
+      if (!wallet) {
+        throw new Error('Wallet invariant violated.');
+      }
+
+      return {
+        totalReceivedCents: moneyToNumber(sales._sum.amountCents ?? 0n),
+        settledCount: sales._count,
+        withoutWinnerCount,
+        wallet: presentWallet(wallet, this.clock.now()),
+      };
     });
   }
 }

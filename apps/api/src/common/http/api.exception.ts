@@ -1,4 +1,5 @@
 import { HttpException } from '@nestjs/common';
+
 import type { ApiErrorDetails } from '@holobid/contracts';
 
 // Messages and details must be safe to expose to the caller.

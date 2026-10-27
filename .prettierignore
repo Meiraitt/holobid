@@ -1,0 +1,29 @@
+# Generated output and dependencies
+**/node_modules/
+**/dist/
+**/build/
+**/src/generated/
+**/coverage/
+**/*.tsbuildinfo
+package-lock.json
+
+# Local documents, secrets and reports
+**/*.[mM][dD]
+**/.env
+**/.env.*
+**/*.log
+outputs/
+work/
+.plans/
+reports/
+test-results/
+backups/
+secrets/
+
+# Preserve source fixtures and applied migrations byte for byte
+apps/api/fixtures/
+apps/api/prisma/migrations/
+apps/api/prisma/audit/migrations/
+
+# README is maintained as plain text, without a Markdown extension
+README

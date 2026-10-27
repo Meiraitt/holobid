@@ -1,8 +1,11 @@
-import process, { loadEnvFile } from 'node:process';
 import { existsSync } from 'node:fs';
+import process, { loadEnvFile } from 'node:process';
+
 import { defineConfig } from 'prisma/config';
 
-if (process.env.NODE_ENV !== 'test' && existsSync('.env')) loadEnvFile('.env');
+if (process.env.NODE_ENV !== 'test' && existsSync('.env')) {
+  loadEnvFile('.env');
+}
 
 export default defineConfig({
   schema: 'prisma/audit/schema.prisma',

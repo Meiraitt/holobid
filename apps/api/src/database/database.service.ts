@@ -1,8 +1,10 @@
 import { Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient, Prisma } from '../generated/main/client';
+
 import type { ApiEnvironment } from '../config/environment';
+import { Prisma, PrismaClient } from '../generated/main/client';
+
 import { postgresOptions } from './postgres-options';
 
 export type TransactionContext = Prisma.TransactionClient;
@@ -25,10 +27,14 @@ export class DatabaseService implements OnApplicationShutdown {
 
   // Multi-query dashboards must see the same primary snapshot during settlement.
   readSnapshot<T>(work: (tx: TransactionContext) => Promise<T>): Promise<T> {
-    return this.client.$transaction(async tx => {
-      await tx.$executeRaw`SET TRANSACTION READ ONLY`;
-      return work(tx);
-    }, { isolationLevel: 'RepeatableRead', maxWait: 5_000, timeout: 10_000 });
+    return this.client.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+
+        return work(tx);
+      },
+      { isolationLevel: 'RepeatableRead', maxWait: 5_000, timeout: 10_000 },
+    );
   }
 
   async ping(): Promise<void> {

@@ -1,6 +1,17 @@
-import { applyDecorators, CanActivate, ExecutionContext, ForbiddenException, Injectable, SetMetadata, UnauthorizedException, UseGuards } from '@nestjs/common';
+import {
+  applyDecorators,
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+  SetMetadata,
+  UnauthorizedException,
+  UseGuards,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+
 import type { UserRole } from '@holobid/contracts';
+
 import { AccessTokenGuard } from './access-token.guard';
 import type { AuthenticatedRequest } from './auth-user';
 
@@ -12,9 +23,20 @@ export class RolesGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const user = context.switchToHttp().getRequest<AuthenticatedRequest>().user;
-    if (!user) throw new UnauthorizedException();
-    const roles = this.reflector.getAllAndOverride<UserRole[]>(ROLES, [context.getHandler(), context.getClass()]);
-    if (roles && !roles.includes(user.role)) throw new ForbiddenException();
+
+    if (!user) {
+      throw new UnauthorizedException();
+    }
+
+    const roles = this.reflector.getAllAndOverride<UserRole[]>(ROLES, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    if (roles && !roles.includes(user.role)) {
+      throw new ForbiddenException();
+    }
+
     return true;
   }
 }

@@ -1,5 +1,7 @@
 import { Controller, Get } from '@nestjs/common';
+
 import type { LivenessResponse, ReadinessResponse } from '@holobid/contracts';
+
 import { HealthService } from './health.service';
 
 @Controller('health')

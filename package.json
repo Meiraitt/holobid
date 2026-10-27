@@ -13,7 +13,7 @@
   },
   "packageManager": "npm@11.21.1",
   "scripts": {
-    "check": "npm run lint && npm run typecheck && npm run build && npm run test:api && npm run test:db && npm run test:http",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run build && npm run test:api && npm run test:db && npm run test:http",
     "check:container": "docker build --progress=plain --target checks -f apps/api/Dockerfile .",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "npm run build --workspace=@holobid/contracts && npm run typecheck --workspaces",
@@ -33,12 +33,19 @@
     "db:seed": "npm run build:api && npm run db:seed --workspace=@holobid/api",
     "test:http": "npm run build:api && npm run test:http --workspace=@holobid/api",
     "db:release": "npm run db:audit:migrate && npm run db:migrate",
-    "test:deploy": "node apps/api/scripts/deploy-smoke.mjs"
+    "test:deploy": "node apps/api/scripts/deploy-smoke.mjs",
+    "format": "npm run lint:fix && prettier --write .",
+    "format:check": "prettier --check .",
+    "lint:fix": "eslint . --fix --max-warnings=0"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@stylistic/eslint-plugin": "5.10.0",
     "@types/node": "24.19.2",
     "eslint": "10.13.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-simple-import-sort": "14.0.0",
+    "prettier": "3.9.10",
     "typescript": "5.9.3",
     "typescript-eslint": "8.72.1"
   },
