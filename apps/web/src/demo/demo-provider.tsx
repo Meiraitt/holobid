@@ -2,15 +2,12 @@ import { createContext, type ReactNode, useContext, useState } from 'react';
 
 import { createDemoState, demoCards } from './fixtures';
 import { assertAmount, bidDemo, depositDemo, reservedBalance } from './model';
-import type { CreateAuctionInput, DemoCard, DemoRole, DemoState } from './types';
+import type { CreateAuctionInput, DemoCard, DemoState, DemoUser } from './types';
 
 interface DemoContextValue extends DemoState {
   cards: DemoCard[];
   reservedCents: number;
   availableCents: number;
-  login: (role: DemoRole, name?: string) => void;
-  logout: () => void;
-  register: (name: string, email: string) => void;
   deposit: (cents: number) => void;
   placeBid: (auctionId: string, cents: number) => void;
   createAuction: (input: CreateAuctionInput) => string;
@@ -20,26 +17,19 @@ interface DemoContextValue extends DemoState {
 
 const DemoContext = createContext<DemoContextValue | null>(null);
 
-export function DemoProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState(createDemoState);
+export function DemoProvider({ children, user }: { children: ReactNode; user: DemoUser | null }) {
+  const [state, setState] = useState(() => ({ ...createDemoState(), user }));
+
+  if (state.user?.email !== user?.email || state.user?.role !== user?.role) {
+    setState({ ...createDemoState(), user });
+  }
+
   const reservedCents = reservedBalance(state);
   const value: DemoContextValue = {
     ...state,
     cards: demoCards,
     reservedCents,
     availableCents: state.totalCents - reservedCents,
-    login: (role, name) =>
-      setState((current) => ({
-        ...current,
-        user: {
-          name: name ?? (role === 'auctioneer' ? 'Mesa HoloBid' : 'Marina'),
-          email: role === 'auctioneer' ? 'mesa@example.test' : 'marina@example.test',
-          role,
-        },
-      })),
-    logout: () => setState((current) => ({ ...current, user: null })),
-    register: (name, email) =>
-      setState((current) => ({ ...current, user: { name, email, role: 'bidder' } })),
     deposit: (cents) => setState(depositDemo(state, cents)),
     placeBid: (id, cents) => setState(bidDemo(state, id, cents)),
     createAuction: (input) => {
@@ -112,7 +102,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
         ),
       });
     },
-    reset: () => setState(createDemoState()),
+    reset: () => setState({ ...createDemoState(), user }),
   };
 
   return <DemoContext.Provider value={value}>{children}</DemoContext.Provider>;
