@@ -1,16 +1,31 @@
 import { Module } from '@nestjs/common';
-import { DatabaseModule } from '../../database/database.module';
+
 import { IdempotencyModule } from '../../common/idempotency/idempotency.module';
-import { AuthModule } from '../auth/auth.module';
-import { AuditModule } from '../audit/audit.module';
+import { DatabaseModule } from '../../database/database.module';
 import { AuctionsModule } from '../auctions/auctions.module';
+import { AuditModule } from '../audit/audit.module';
+import { AuthModule } from '../auth/auth.module';
 import { CatalogModule } from '../catalog/catalog.module';
-import { WalletPersistenceModule } from '../wallets/wallet-persistence.module';
 import { SettlementCoreModule } from '../settlements/settlement-core.module';
-import { DemoFixtures } from './demo-fixtures.service';
+import { WalletPersistenceModule } from '../wallets/wallet-persistence.module';
+
 import { DemoRepository } from './demo.repository';
-import { DemoPublicationService } from './demo-publication.service';
 import { DemoService } from './demo.service';
-@Module({ imports: [DatabaseModule, IdempotencyModule, AuthModule, AuditModule, AuctionsModule, CatalogModule, WalletPersistenceModule, SettlementCoreModule],
-  providers: [DemoFixtures, DemoRepository, DemoPublicationService, DemoService], exports: [DemoService] })
+import { DemoFixtures } from './demo-fixtures.service';
+import { DemoPublicationService } from './demo-publication.service';
+
+@Module({
+  imports: [
+    DatabaseModule,
+    IdempotencyModule,
+    AuthModule,
+    AuditModule,
+    AuctionsModule,
+    CatalogModule,
+    WalletPersistenceModule,
+    SettlementCoreModule,
+  ],
+  providers: [DemoFixtures, DemoRepository, DemoPublicationService, DemoService],
+  exports: [DemoService],
+})
 export class DemoCoreModule {}

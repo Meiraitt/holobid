@@ -10,6 +10,7 @@ describe('Wallet boundaries', () => {
   });
   it('limits independent users and expires buckets without a timer', () => {
     const limiter = new FixedWindowLimiter(2, 60_000, 2);
+
     expect(limiter.consume('alice', 0)).toBeNull();
     expect(limiter.consume('alice', 0)).toBeNull();
     expect(limiter.consume('alice', 1_000)).toBe(59);
