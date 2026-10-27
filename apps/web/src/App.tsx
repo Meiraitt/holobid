@@ -10,6 +10,7 @@ import { LoginView } from './views/login/LoginView';
 import { MyAuctionsView } from './views/my-auctions/MyAuctionsView';
 import { NotFoundView } from './views/not-found/NotFoundView';
 import { ParticipationsView } from './views/participations/ParticipationsView';
+import { ReceiptView } from './views/receipt/ReceiptView';
 import { RegisterView } from './views/register/RegisterView';
 import { WalletView } from './views/wallet/WalletView';
 
@@ -28,6 +29,7 @@ export function App() {
         <Route path="/my-auctions" element={<MyAuctionsView />} />
         <Route path="/auctions/new" element={<CreateAuctionView />} />
         <Route path="/auctions/:auctionId/audit" element={<AuditView />} />
+        <Route path="/receipts/:receiptId" element={<ReceiptView />} />
         <Route path="*" element={<NotFoundView />} />
       </Route>
     </Routes>
