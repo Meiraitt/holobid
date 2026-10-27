@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { AppLayout } from './components/layout/app-layout';
 import { AuctionsView } from './views/auctions/AuctionsView';
 import { DesignSystemView } from './views/design-system/DesignSystemView';
+import { LoginView } from './views/login/LoginView';
 import { NotFoundView } from './views/not-found/NotFoundView';
 
 export function App() {
@@ -12,6 +13,7 @@ export function App() {
         <Route index element={<Navigate to="/auctions" replace />} />
         <Route path="/design-system" element={<DesignSystemView />} />
         <Route path="/auctions" element={<AuctionsView />} />
+        <Route path="/login" element={<LoginView />} />
         <Route path="*" element={<NotFoundView />} />
       </Route>
     </Routes>
