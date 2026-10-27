@@ -227,7 +227,8 @@ o serviço sem apagar esses dados. Não reutilizar essas credenciais em deploy.
 Em produção, o plano usa projetos/credenciais separados para que alterações
 na base principal não também alterem as âncoras. O isolamento local por
 papéis não protege contra alguém que controle o administrador do cluster.
-Nenhuma conta ou infraestrutura de nuvem foi criada nesta task.
+O deploy usa dois projetos Neon separados; configuração Docker e release
+estão descritos na seção BE-17 abaixo.
 
 Estrutura
 ---------
@@ -648,3 +649,76 @@ verde: enquanto a conta bloquear Actions, o resultado é somente local.
 Limites desta validação: não comprova telas React, CORS/rewrite no host
 real, HTTPS público, quotas da conta, avaliação visual ou o formulário de
 entrega. Repetir o smoke no deploy depois da configuração das contas.
+
+Deploy da API com Docker (BE-17)
+-------------------------------
+Build context: raiz do monorepo. Dockerfile: apps/api/Dockerfile.
+Node 24.22.1 Debian slim tem digest fixado; build usa npm 11.21.1 e lockfile.
+O estágio final runtime contém dist, dependências de produção e fixtures;
+executa como usuário node, sem TypeScript, Prisma CLI, testes ou arquivos .env.
+A imagem suporta filesystem somente leitura e encerra pelo SIGTERM do Node.
+
+    docker build -f apps/api/Dockerfile -t holobid-api .
+    docker build -f apps/api/Dockerfile --target migrations -t holobid-migrations .
+
+Crie um arquivo de ambiente fora do contexto de build, com permissão 0600,
+seguindo apps/api/.env.example. Use os dois bancos Neon, suas URLs diretas
+para migrations e as URLs pooled para runtime. Preserve as chaves JWT/HMAC/
+pseudônimo entre releases. Nunca passe credenciais como build arguments.
+
+Release, antes de trocar a imagem da API:
+
+    docker run --rm --env-file /caminho/seguro/runtime.env holobid-migrations
+    docker run --rm --env-file /caminho/seguro/runtime.env -p 3000:3000 holobid-api
+
+O target migrations executa npm run db:release: auditoria primeiro, principal
+em seguida, falhando imediatamente se uma migration falhar. Reexecutar é
+seguro: migrate deploy só aplica migrations pendentes. Não roda durante o
+build nem a cada inicialização da API. É possível usar um job de release com
+a mesma imagem/target ou executar o comando acima no computador de deploy.
+Mudanças incompatíveis de schema exigem expand/contract e revisão própria.
+DEMO_MODE=true provisiona o seed idempotente na inicialização normal da API.
+
+Northflank Developer Sandbox, combinado com Neon Free:
+  - Um serviço Combined, Dockerfile /apps/api/Dockerfile, contexto /.
+  - Target runtime (ou vazio, pois é o último estágio).
+  - Remover o override /cnb/lifecycle/launcher do antigo buildpack.
+    Usar CMD da imagem: node apps/api/dist/main.js.
+  - Uma instância nf-compute-20: 0.2 vCPU / 512 MB, sem autoscaling/volumes.
+  - Porta pública HTTP 3000, nome holobid; HTTPS é terminado pelo Northflank.
+  - Variáveis de apps/api/.env.example em Runtime variables, nunca no build.
+  - NODE_ENV=production, PORT=3000, DEMO_MODE=true.
+  - Readiness HTTP /api/v1/health/live, porta 3000, timeout 10 s,
+    intervalo 60 s, delay 5 s. Não despertar Neon com probes de banco.
+  - /api/v1/health/ready testa os dois bancos; usar manualmente no release.
+    Scale-to-zero do Neon pode causar 503 transitório no primeiro acesso.
+  - WEB_ORIGIN deve ser a origem HTTPS exata do frontend, sem barra final.
+    Até o frontend existir, está configurado para a própria origem da API.
+  - Sem Redis, réplicas extras, GPU, domínio pago ou upgrade de plano.
+
+API: https://holobid--meiraitt--fmvj6fdxbbcx.code.run/api/v1
+WebSocket: mesma origem, path /socket.io. O repositório pode continuar privado.
+Gratuidade depende das quotas dos planos, conferidas no painel; não há um
+serviço pago de keep-alive. O banco, o histórico e as chaves sobrevivem ao
+restart. Rollback da aplicação: redeploy da imagem anterior compatível com
+as migrations já aplicadas; nunca apagar bases ou trocar chaves de auditoria.
+
+Smoke financeiro explícito no deploy (gera dados de demonstração permanentes):
+
+    npm run test:deploy -- --base https://HOST/api/v1 --allow-write --report /caminho/resultado.json
+
+Usa fetch HTTP real e Socket.IO, dois novos bidders, depósitos simulados,
+TCGdex real, reserva/liberação, idempotência, erros financeiros, anti-sniping,
+liquidação pelo relógio real sem sockets, recibo e auditoria. Não usa SQL,
+fixtures de rede nem altera o relógio. Não remove o histórico criado. Usa
+somente o leiloeiro demo público; os bidders demo existentes são preservados.
+--origin URL permite testar a origem CORS configurada, quando diferente da API.
+O saldo inicial do leiloeiro é comparado ao final; evite outras vendas
+simultâneas durante o teste. Nenhum dinheiro real é movimentado.
+
+Para incluir restart, adicione --restart-gate /caminho/novo-gate. Quando o
+runner imprimir READY_FOR_RESTART, reinicie o serviço pelo painel; aguarde
+Running e health/ready 200, então crie /caminho/novo-gate.continue. O runner
+confirma saldos, sessões, recibo, auditoria e WebSocket após o restart, por
+até oito minutos. O relatório omite senhas, cookies e tokens. Sem essa flag,
+o relatório indica explicitamente que restart não foi validado.
