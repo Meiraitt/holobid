@@ -11,10 +11,7 @@
     <title>HoloBid — Leilões de cartas Pokémon</title>
     <script>
       try {
-        const theme = localStorage.getItem('holobid-theme') || 'system';
-        const dark =
-          theme === 'dark' ||
-          (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+        const dark = localStorage.getItem('holobid-theme') !== 'light';
         document.documentElement.classList.toggle('dark', dark);
       } catch {
         /* A blocked storage must not prevent rendering. */

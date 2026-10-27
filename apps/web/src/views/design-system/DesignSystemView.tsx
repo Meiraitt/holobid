@@ -19,7 +19,7 @@ export function DesignSystemView() {
     <section className="space-y-10">
       <PageHeader
         title="Design system"
-        description="A mesma linguagem em cada tela: foco nas cartas, decisões claras e estados legíveis. Experimente também os temas Claro, Escuro e Sistema."
+        description="A mesma linguagem em cada tela: foco nas cartas, decisões claras e estados legíveis. Experimente também os temas Claro e Escuro pelo botão de sol e lua no topo."
       />
       <section className="border-t pt-7">
         <h2>Cor com propósito</h2>

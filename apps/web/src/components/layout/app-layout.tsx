@@ -5,7 +5,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useDemo } from '../../demo/demo-provider';
 import type { DemoRole } from '../../demo/types';
 import { cn } from '../../lib/utils';
-import { ThemeSelect } from '../../providers/theme-provider';
+import { ThemeToggle } from '../../providers/theme-provider';
 import { Money } from '../shared/money';
 import { Button, buttonVariants } from '../ui/button';
 import { Modal } from '../ui/dialog';
@@ -109,7 +109,7 @@ export function AppLayout() {
                 <Money cents={availableCents} className="font-semibold" />
               </Link>
             )}
-            <ThemeSelect />
+            <ThemeToggle />
             {user ? (
               <Button
                 variant="ghost"
