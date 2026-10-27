@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { AppLayout } from './components/layout/app-layout';
+import { AuctionRoomView } from './views/auction-room/AuctionRoomView';
 import { AuctionsView } from './views/auctions/AuctionsView';
 import { DesignSystemView } from './views/design-system/DesignSystemView';
 import { LoginView } from './views/login/LoginView';
@@ -16,6 +17,7 @@ export function App() {
         <Route path="/auctions" element={<AuctionsView />} />
         <Route path="/login" element={<LoginView />} />
         <Route path="/register" element={<RegisterView />} />
+        <Route path="/auctions/:auctionId" element={<AuctionRoomView />} />
         <Route path="*" element={<NotFoundView />} />
       </Route>
     </Routes>
