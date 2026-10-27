@@ -92,6 +92,8 @@ export function ConfirmationDialog({
   onConfirm,
   confirmLabel = 'Confirmar',
   destructive = false,
+  busy = false,
+  confirmDisabled = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -100,11 +102,20 @@ export function ConfirmationDialog({
   onConfirm: () => void;
   confirmLabel?: string;
   destructive?: boolean;
+  busy?: boolean;
+  confirmDisabled?: boolean;
 }) {
   const finalFocus = useReturnFocus(open);
 
   return (
-    <AlertDialog.Root open={open} onOpenChange={onOpenChange}>
+    <AlertDialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (!busy) {
+          onOpenChange(next);
+        }
+      }}
+    >
       <AlertDialog.Portal>
         <AlertDialog.Backdrop className="fixed inset-0 z-40 bg-black/65" />
         <AlertDialog.Popup className={popupClass} finalFocus={finalFocus}>
@@ -113,8 +124,15 @@ export function ConfirmationDialog({
             {description}
           </AlertDialog.Description>
           <div className="mt-7 flex flex-wrap justify-end gap-3">
-            <AlertDialog.Close render={<Button variant="outline" />}>Voltar</AlertDialog.Close>
-            <Button variant={destructive ? 'destructive' : 'default'} onClick={onConfirm}>
+            <AlertDialog.Close render={<Button variant="outline" disabled={busy} />}>
+              Voltar
+            </AlertDialog.Close>
+            <Button
+              variant={destructive ? 'destructive' : 'default'}
+              onClick={onConfirm}
+              loading={busy}
+              disabled={confirmDisabled}
+            >
               {confirmLabel}
             </Button>
           </div>

@@ -92,7 +92,8 @@ export function AppLayout() {
       <div className="no-print border-b bg-muted/70">
         <div className="page-container flex min-h-9 flex-wrap items-center justify-between gap-x-4 gap-y-1 py-1 text-xs text-muted-foreground">
           <span>
-            Autenticação, vitrine e publicação conectadas · Carteira e painéis ainda em demonstração
+            Vitrine, publicação e painel do leiloeiro conectados · Carteira e participações em
+            demonstração
           </span>
         </div>
       </div>

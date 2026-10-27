@@ -130,3 +130,33 @@ AuditAnchorRepository.prototype.commit = async function (...args) {
 
   return commitAnchor.apply(this, args);
 };
+
+// Advance the real scheduler alongside the controlled auction clock in HTTP scenarios.
+const { AuctionScheduler } = compiled('modules/settlements/auction-scheduler.js');
+const startScheduler = AuctionScheduler.prototype.start;
+const stopScheduler = AuctionScheduler.prototype.beforeApplicationShutdown;
+const testScans = new WeakMap();
+
+AuctionScheduler.prototype.start = async function (...args) {
+  const result = await startScheduler.apply(this, args);
+
+  if (!testScans.has(this)) {
+    const timer = globalThis.setInterval(() => {
+      if (control().reconcileSettlements) {
+        void this.reconcile();
+      }
+    }, 100);
+
+    timer.unref();
+    testScans.set(this, timer);
+  }
+
+  return result;
+};
+
+AuctionScheduler.prototype.beforeApplicationShutdown = async function (...args) {
+  globalThis.clearInterval(testScans.get(this));
+  testScans.delete(this);
+
+  return stopScheduler.apply(this, args);
+};

@@ -1,5 +1,8 @@
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router';
+
+import type { AuctionStatus, OwnedAuctionDetail } from '@holobid/contracts';
 
 import { CardArtwork } from '../../components/shared/card-artwork';
 import { EmptyState } from '../../components/shared/empty-state';
@@ -7,98 +10,67 @@ import { Money } from '../../components/shared/money';
 import { PageHeader } from '../../components/shared/page-header';
 import { StatusBadge } from '../../components/shared/status-badge';
 import { Button, buttonVariants } from '../../components/ui/button';
-import { ConfirmationDialog } from '../../components/ui/dialog';
 import { NativeSelect } from '../../components/ui/input';
-import { toast } from '../../components/ui/toast';
-import { useDemo } from '../../demo/demo-provider';
-import type { AuctionStatus, DemoAuction } from '../../demo/types';
 import { formatDate } from '../../lib/format';
+import { useAuth } from '../../providers/auth-provider';
+import { apiClient } from '../../services';
+import { errorMessage } from '../../services/api-error';
+import { mediaUrl } from '../../services/media-url';
+
+import { auctioneerSummaryOptions, ownedAuctionsOptions } from './auctioneer-queries';
+import { CancelAuctionDialog } from './CancelAuctionDialog';
 
 const statusLabels: Record<AuctionStatus, string> = {
-  live: 'Ao vivo',
-  scheduled: 'Agendado',
-  ended: 'Encerrado',
-  cancelled: 'Cancelado',
+  LIVE: 'Ao vivo',
+  SCHEDULED: 'Agendado',
+  ENDED: 'Encerrado',
+  CANCELLED: 'Cancelado',
 };
 
-function AuctionResult({ auction }: { auction: DemoAuction }) {
-  if (auction.status === 'cancelled') {
+function AuctionResult({ auction }: { auction: OwnedAuctionDetail }) {
+  if (auction.status === 'CANCELLED') {
     return <span className="text-muted-foreground">Lote retirado da vitrine</span>;
   }
 
-  if (auction.status !== 'ended') {
+  if (auction.status !== 'ENDED') {
     return <span className="text-muted-foreground">{auction.bidCount} lances recebidos</span>;
   }
 
-  if (auction.settlement === 'failed') {
+  if (auction.settlementStatus === 'FAILED') {
     return <span className="text-destructive">Falha na liquidação. Receita não confirmada.</span>;
   }
 
-  if (auction.settlement === 'pending' || auction.integrity !== 'verified') {
+  if (auction.settlementStatus !== 'COMPLETED' || auction.auditIntegrity !== 'VERIFIED') {
     return <span className="text-warning">Resultado em verificação</span>;
   }
 
-  return auction.bidCount === 0 ? (
+  return auction.outcome?.kind === 'NO_BIDS' ? (
     <span className="text-muted-foreground">Encerrado sem lances</span>
   ) : (
-    <span className="text-success">Arremate concluído</span>
+    <span className="text-success">
+      Arremate concluído
+      {auction.outcome?.kind === 'SOLD' && (
+        <span className="mt-1 block text-muted-foreground">
+          Vencedor: {auction.outcome.winnerPseudonym}
+        </span>
+      )}
+    </span>
   );
 }
 
 export function MyAuctionsView() {
-  const { auctions, user, cancelAuction } = useDemo();
+  const { user } = useAuth();
   const [filter, setFilter] = useState<AuctionStatus | 'all'>('all');
-  const [cancelId, setCancelId] = useState<string | null>(null);
-  const [cancelError, setCancelError] = useState('');
-  const owned = auctions.filter((auction) => auction.mine);
-  const visible = owned.filter((auction) => filter === 'all' || auction.status === filter);
-  const completed = owned.filter(
-    (auction) =>
-      auction.status === 'ended' &&
-      auction.settlement === 'settled' &&
-      auction.integrity === 'verified' &&
-      auction.bidCount > 0,
+  const [cancellation, setCancellation] = useState<OwnedAuctionDetail | null>(null);
+  const query = useInfiniteQuery(
+    ownedAuctionsOptions(user!.id, filter === 'all' ? undefined : filter),
   );
-  const received = completed.reduce((sum, auction) => sum + auction.currentBidCents, 0);
-  const cancellation = owned.find((auction) => auction.id === cancelId);
-
-  function confirmCancellation() {
-    if (!cancellation) {
-      return;
-    }
-
-    try {
-      cancelAuction(cancellation.id);
-      setCancelId(null);
-      setCancelError('');
-      toast.success('Lote cancelado', 'O histórico foi preservado em seus leilões.');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Não foi possível cancelar o lote.';
-
-      setCancelError(message);
-      toast.error('Cancelamento não concluído', message);
-    }
-  }
-
-  if (user?.role !== 'auctioneer') {
-    return (
-      <section className="space-y-8">
-        <PageHeader
-          title="Meus leilões"
-          description="Publique cartas e acompanhe seus resultados."
-        />
-        <EmptyState
-          title="Área do leiloeiro"
-          description="Entre com uma conta de leiloeiro para criar e gerenciar lotes."
-          action={
-            <Link to="/login" className="text-link">
-              Entrar na minha conta
-            </Link>
-          }
-        />
-      </section>
-    );
-  }
+  const summary = useQuery(auctioneerSummaryOptions(user!.id));
+  const visible = [
+    ...new Map(
+      (query.data?.pages.flatMap((page) => page.items) ?? []).map((lot) => [lot.id, lot]),
+    ).values(),
+  ];
 
   return (
     <section className="space-y-8">
@@ -116,21 +88,32 @@ export function MyAuctionsView() {
         <div>
           <dt className="text-sm text-muted-foreground">Recebido em arremates concluídos</dt>
           <dd className="mt-1 font-display text-4xl font-semibold text-foreground">
-            <Money cents={received} />
+            {summary.data ? <Money cents={summary.data.totalReceivedCents} /> : '—'}
           </dd>
         </div>
         <div>
           <dt className="text-sm text-muted-foreground">Arremates concluídos</dt>
-          <dd className="mt-1 font-display text-3xl font-semibold">{completed.length}</dd>
+          <dd className="mt-1 font-display text-3xl font-semibold">
+            {summary.data?.settledCount ?? '—'}
+          </dd>
         </div>
         <div>
-          <dt className="text-sm text-muted-foreground">Lotes em andamento</dt>
+          <dt className="text-sm text-muted-foreground">Encerrados sem vencedor</dt>
           <dd className="mt-1 font-display text-3xl font-semibold">
-            {owned.filter((auction) => auction.status === 'live').length}
+            {summary.data?.withoutWinnerCount ?? '—'}
           </dd>
         </div>
       </dl>
 
+      {summary.isPending && <p role="status">Carregando seus totais…</p>}
+      {summary.isError && (
+        <div role="alert">
+          <p>Não foi possível atualizar os totais. {errorMessage(summary.error)}</p>
+          <Button variant="outline" onClick={() => void summary.refetch()}>
+            Atualizar totais
+          </Button>
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h2 className="font-display text-2xl font-semibold">Seus lotes</h2>
         <div className="flex items-center gap-3">
@@ -143,15 +126,23 @@ export function MyAuctionsView() {
             onChange={(event) => setFilter(event.target.value as AuctionStatus | 'all')}
           >
             <option value="all">Todos os lotes</option>
-            <option value="live">Ao vivo</option>
-            <option value="scheduled">Agendados</option>
-            <option value="ended">Encerrados</option>
-            <option value="cancelled">Cancelados</option>
+            <option value="LIVE">Ao vivo</option>
+            <option value="SCHEDULED">Agendados</option>
+            <option value="ENDED">Encerrados</option>
+            <option value="CANCELLED">Cancelados</option>
           </NativeSelect>
         </div>
       </div>
 
-      {visible.length === 0 ? (
+      {query.isPending ? (
+        <p role="status">Carregando seus lotes…</p>
+      ) : query.isError && !query.data ? (
+        <EmptyState
+          title="Não foi possível carregar seus lotes"
+          description={errorMessage(query.error)}
+          action={<Button onClick={() => void query.refetch()}>Tentar novamente</Button>}
+        />
+      ) : visible.length === 0 ? (
         <EmptyState
           title="Nenhum lote nesta situação"
           description="Escolha outra situação ou publique uma carta do catálogo."
@@ -183,22 +174,20 @@ export function MyAuctionsView() {
               >
                 <div className="flex min-w-0 items-center gap-4">
                   <CardArtwork
-                    src={auction.card.image}
-                    alt={auction.card.name + ', ' + auction.card.edition}
+                    src={mediaUrl(auction.imageUrl, apiClient.origin)}
+                    alt={auction.title + ', ' + auction.setName}
                     className="h-24 min-h-0 w-16 shrink-0 p-0"
                   />
                   <div className="min-w-0 space-y-1.5">
-                    <Link className="font-semibold hover:underline" to={'/auctions/' + auction.id}>
-                      {auction.card.name}
-                    </Link>
+                    <p className="font-semibold">{auction.title}</p>
                     <p className="text-sm text-muted-foreground">
-                      {auction.card.edition} / {auction.card.number}
+                      {auction.setName} / {auction.cardNumber}
                     </p>
                     <StatusBadge
                       tone={
-                        auction.status === 'live'
+                        auction.status === 'LIVE'
                           ? 'success'
-                          : auction.status === 'scheduled'
+                          : auction.status === 'SCHEDULED'
                             ? 'info'
                             : 'neutral'
                       }
@@ -212,62 +201,59 @@ export function MyAuctionsView() {
                     <AuctionResult auction={auction} />
                   </p>
                   <p className="text-muted-foreground">
-                    {auction.status === 'scheduled'
+                    {auction.status === 'SCHEDULED'
                       ? 'Começa'
-                      : auction.status === 'cancelled'
+                      : auction.status === 'CANCELLED'
                         ? 'Previsão original:'
-                        : auction.status === 'ended'
+                        : auction.status === 'ENDED'
                           ? 'Encerrado em'
                           : 'Encerra'}{' '}
-                    {formatDate(auction.status === 'scheduled' ? auction.startsAt : auction.endsAt)}
+                    {formatDate(auction.status === 'SCHEDULED' ? auction.startsAt : auction.endsAt)}
                   </p>
                 </div>
                 <div className="lg:text-right">
                   <p className="text-xs text-muted-foreground">
-                    {auction.bidCount === 0
-                      ? 'Lance inicial'
-                      : auction.status === 'ended'
-                        ? 'Lance final'
-                        : 'Lance atual'}
+                    {auction.outcome?.kind === 'NO_BIDS'
+                      ? 'Recebido'
+                      : auction.bidCount === 0
+                        ? 'Lance inicial'
+                        : auction.status === 'ENDED'
+                          ? 'Lance final'
+                          : 'Lance atual'}
                   </p>
                   <Money
                     className="text-xl font-semibold"
                     cents={
-                      auction.bidCount === 0 ? auction.startingBidCents : auction.currentBidCents
+                      auction.outcome?.kind === 'NO_BIDS'
+                        ? 0
+                        : auction.bidCount === 0
+                          ? auction.startingPriceCents
+                          : (auction.currentBidCents ?? auction.startingPriceCents)
                     }
                   />
                 </div>
                 <div className="flex flex-wrap gap-2 lg:w-36 lg:justify-end">
-                  <Link
-                    className={buttonVariants({ variant: 'outline', size: 'sm' })}
-                    to={'/auctions/' + auction.id}
-                  >
-                    Ver lote
-                  </Link>
-                  {auction.bidCount === 0 &&
-                  (auction.status === 'live' || auction.status === 'scheduled') ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setCancelError('');
-                        setCancelId(auction.id);
-                      }}
+                  {auction.status !== 'CANCELLED' && (
+                    <Link
+                      className={buttonVariants({ variant: 'outline', size: 'sm' })}
+                      to={'/auctions/' + auction.id}
                     >
+                      Ver lote
+                    </Link>
+                  )}
+                  {auction.canCancel ? (
+                    <Button variant="ghost" size="sm" onClick={() => setCancellation(auction)}>
                       Cancelar lote
                     </Button>
-                  ) : auction.status === 'live' ? (
+                  ) : (
                     <span className="text-xs text-muted-foreground">
-                      Com lances: cancelamento indisponível
+                      {auction.cancelReason === 'AUCTION_HAS_BIDS'
+                        ? 'Com lances: cancelamento indisponível'
+                        : auction.status === 'LIVE' || auction.status === 'SCHEDULED'
+                          ? 'Cancelamento indisponível durante a verificação'
+                          : 'Histórico preservado'}
                     </span>
-                  ) : auction.status === 'ended' ? (
-                    <Link
-                      className="inline-flex min-h-11 items-center text-sm text-info underline-offset-4 hover:underline"
-                      to={'/auctions/' + auction.id + '/audit'}
-                    >
-                      Ver auditoria
-                    </Link>
-                  ) : null}
+                  )}
                 </div>
               </li>
             ))}
@@ -275,27 +261,40 @@ export function MyAuctionsView() {
         </div>
       )}
 
-      {cancelError && (
-        <p className="text-sm text-destructive" role="alert">
-          {cancelError}
-        </p>
+      {query.hasNextPage && (
+        <Button
+          variant="outline"
+          loading={query.isFetchingNextPage}
+          onClick={() => void query.fetchNextPage()}
+        >
+          Carregar mais lotes
+        </Button>
       )}
-      <ConfirmationDialog
-        open={Boolean(cancellation)}
-        onOpenChange={(open) => {
-          if (!open) {
-            setCancelId(null);
-          }
-        }}
-        title={'Cancelar ' + (cancellation?.card.name ?? 'lote') + '?'}
-        description={
-          cancelError ||
-          'O lote sairá da vitrine e não receberá lances. O registro continuará disponível em seus leilões. Essa ação não pode ser desfeita.'
-        }
-        confirmLabel="Cancelar lote"
-        destructive
-        onConfirm={confirmCancellation}
-      />
+      {query.isError && query.data && (
+        <div role="alert">
+          <p>Os lotes exibidos podem estar desatualizados. {errorMessage(query.error)}</p>
+          <Button
+            variant="outline"
+            onClick={() =>
+              void (query.isFetchNextPageError ? query.fetchNextPage() : query.refetch())
+            }
+          >
+            Tentar novamente
+          </Button>
+        </div>
+      )}
+      {cancellation && (
+        <CancelAuctionDialog
+          key={cancellation.id}
+          auction={cancellation}
+          userId={user!.id}
+          onClose={() => setCancellation(null)}
+        />
+      )}
+      <p className="text-sm text-muted-foreground">
+        Horários de Brasília · Atualização a cada 15 segundos. Totais confirmados pelo servidor,
+        incluindo todos os seus lotes.
+      </p>
     </section>
   );
 }
