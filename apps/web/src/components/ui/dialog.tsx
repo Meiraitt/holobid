@@ -45,6 +45,7 @@ export function Modal({
   description,
   children,
   footer,
+  closeDisabled = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -52,11 +53,19 @@ export function Modal({
   description?: string;
   children: ReactNode;
   footer?: ReactNode;
+  closeDisabled?: boolean;
 }) {
   const finalFocus = useReturnFocus(open);
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (!closeDisabled) {
+          onOpenChange(next);
+        }
+      }}
+    >
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/65" />
         <Dialog.Popup className={popupClass} finalFocus={finalFocus}>
@@ -69,7 +78,14 @@ export function Modal({
             )}
           </div>
           <Dialog.Close
-            render={<Button variant="ghost" size="icon" className="absolute right-3 top-3" />}
+            render={
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute right-3 top-3"
+                disabled={closeDisabled}
+              />
+            }
             aria-label="Fechar diálogo"
           >
             <X />

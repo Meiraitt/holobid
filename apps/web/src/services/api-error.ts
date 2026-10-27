@@ -15,6 +15,8 @@ export class ApiRequestError extends Error {
 }
 
 const messages: Record<string, string> = {
+  BALANCE_LIMIT_EXCEEDED:
+    'Este depósito ultrapassa o limite de saldo da carteira. Informe um valor menor.',
   AUCTION_NOT_STARTED: 'Este leilão ainda não começou. Aguarde o início.',
   ALREADY_LEADING: 'Você já está na liderança deste lote.',
   BID_BELOW_MINIMUM:

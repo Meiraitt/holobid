@@ -3,7 +3,7 @@ import { createHmac, randomUUID } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
 
-import { QueryObserver } from '@tanstack/react-query';
+import { InfiniteQueryObserver, QueryObserver } from '@tanstack/react-query';
 import pg from 'pg';
 import { io } from 'socket.io-client';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -13,9 +13,12 @@ import type { AuctionDetail, AuthResponse, CredentialsInput } from '@holobid/con
 import { SessionController } from '../auth/session-controller';
 import { clearPrivateQueries, createQueryClient, queryKeys } from '../lib/query-client';
 import { ApiClient } from '../services/api-client';
+import { ApiRequestError, errorMessage } from '../services/api-error';
 import { createOperation } from '../services/operations';
 import { resourceServices } from '../services/resource-services';
 import { myBidOptions, roomOptions } from '../views/auction-room/room-queries';
+import { depositAttempt } from '../views/wallet/deposit-attempt';
+import { reservationOptions, walletOptions } from '../views/wallet/wallet-queries';
 
 import { RealtimeClient } from './realtime-client';
 
@@ -25,6 +28,8 @@ const control = process.env.HOLOBID_HTTP_CONTROL!;
 const sql = new pg.Client({ connectionString: process.env.DATABASE_URL });
 const nativeFetch = globalThis.fetch;
 let httpRequests = 0;
+let depositRequests = 0;
+let loseDepositResponse = false;
 let wsEvents = 0;
 const dispose: Array<() => void> = [];
 const configure = (patch: object) =>
@@ -234,6 +239,13 @@ beforeAll(async () => {
     const response = await nativeFetch(url, { ...options, headers });
 
     httpRequests++;
+    if (options.method === 'POST' && String(url).endsWith('/wallet/deposits')) {
+      depositRequests++;
+      if (loseDepositResponse && response.ok) {
+        loseDepositResponse = false;
+        throw new TypeError('Test: response lost after the server committed the deposit');
+      }
+    }
 
     return response;
   });
@@ -414,5 +426,267 @@ describe('frontend synchronization with real HTTP and WebSocket', () => {
     );
     expect(a.sockets.at(-1)!.listeners('auction.updated')).toHaveLength(1);
     second.close();
+  });
+});
+
+function memoryStore(): Storage {
+  const values = new Map<string, string>();
+
+  return {
+    get length() {
+      return values.size;
+    },
+    clear: () => values.clear(),
+    key: (index) => [...values.keys()][index] ?? null,
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => {
+      values.set(key, value);
+    },
+    removeItem: (key) => {
+      values.delete(key);
+    },
+  };
+}
+
+function observeWallet(context: Awaited<ReturnType<typeof person>>) {
+  const wallet = new QueryObserver(context.cache, {
+    ...walletOptions(context.id, context.api.wallet),
+    refetchInterval: false,
+  });
+  const reservations = new InfiniteQueryObserver(context.cache, {
+    ...reservationOptions(context.id, context.api.account, 1),
+    refetchInterval: false,
+  });
+  const off = [wallet.subscribe(() => {}), reservations.subscribe(() => {})];
+
+  dispose.push(() => {
+    off.forEach((fn) => fn());
+    wallet.destroy();
+    reservations.destroy();
+  });
+  context.manager.start();
+
+  return { wallet, reservations };
+}
+
+describe('wallet view services with real HTTP, persistence and WebSocket', () => {
+  let c: Awaited<ReturnType<typeof person>>;
+  let d: Awaited<ReturnType<typeof person>>;
+  let observedC: ReturnType<typeof observeWallet>;
+  let observedD: ReturnType<typeof observeWallet>;
+  const store = memoryStore();
+  const entryCount = async () =>
+    Number(
+      (
+        await sql.query(`SELECT COUNT(*) FROM "WalletEntry" WHERE "userId"=$1 AND type='DEPOSIT'`, [
+          c.id,
+        ])
+      ).rows[0].count,
+    );
+
+  it('loads an actual zero wallet and an empty reservation page for new accounts', async () => {
+    c = await person('wallet-c');
+    d = await person('wallet-d');
+    observedC = observeWallet(c);
+    observedD = observeWallet(d);
+    await vi.waitFor(() => {
+      expect(c.manager.getSnapshot().phase).toBe('ready');
+      expect(d.manager.getSnapshot().phase).toBe('ready');
+      expect(observedC.wallet.getCurrentResult().data).toMatchObject({
+        totalCents: 0,
+        reservedCents: 0,
+        availableCents: 0,
+      });
+      expect(observedC.reservations.getCurrentResult().data?.pages[0]?.items).toEqual([]);
+    });
+    expect(c.sockets[0]!.io.engine.transport.name).toBe('websocket');
+  });
+
+  it('rejects invalid cents and disallowed roles through real HTTP', async () => {
+    for (const amountCents of [0, -1, 1.5, 100_000_000_001]) {
+      await expect(c.api.wallet.deposit(createOperation({ amountCents }))).rejects.toMatchObject({
+        status: 400,
+      });
+    }
+
+    await expect(
+      seller.api.wallet.deposit(createOperation({ amountCents: 100 })),
+    ).rejects.toMatchObject({ status: 403 });
+
+    const guest = resourceServices(new ApiClient(origin));
+
+    await expect(guest.wallet.deposit(createOperation({ amountCents: 100 }))).rejects.toMatchObject(
+      { status: 401 },
+    );
+    expect(await entryCount()).toBe(0);
+    expect((await c.api.wallet.get()).totalCents).toBe(0);
+  });
+
+  it('credits one exact-cent deposit on a double submit and updates only its private wallet', async () => {
+    const attempt = depositAttempt(c.api.wallet.deposit, store, c.id);
+    const before = depositRequests;
+    const otherEvents = d.events.filter((name) => name === 'wallet.updated').length;
+    const first = attempt.submit({ amountCents: 12345 });
+
+    expect(attempt.submit({ amountCents: 99999 })).toBe(first);
+
+    const result = await first;
+
+    expect(result.status).toBe(201);
+    expect(attempt.operation).toBeUndefined();
+    expect(store.length).toBe(0);
+    expect(depositRequests - before).toBe(1);
+    expect(await entryCount()).toBe(1);
+    await vi.waitFor(() =>
+      expect(observedC.wallet.getCurrentResult().data).toMatchObject({
+        totalCents: 12345,
+        availableCents: 12345,
+        reservedCents: 0,
+      }),
+    );
+    expect(d.events.filter((name) => name === 'wallet.updated')).toHaveLength(otherEvents);
+    expect(observedD.wallet.getCurrentResult().data?.totalCents).toBe(0);
+  });
+
+  it('recovers a committed deposit after response loss/reload without re-crediting or using the stale replay balance', async () => {
+    const attempt = depositAttempt(c.api.wallet.deposit, store, c.id);
+
+    loseDepositResponse = true;
+    await expect(attempt.submit({ amountCents: 6789 })).rejects.toBeInstanceOf(ApiRequestError);
+
+    const operation = attempt.operation!;
+
+    expect(operation.input.amountCents).toBe(6789);
+    expect(depositAttempt(d.api.wallet.deposit, store, d.id).operation).toBeUndefined();
+    await vi.waitFor(() =>
+      expect(observedC.wallet.getCurrentResult().data?.totalCents).toBe(19134),
+    );
+    await c.api.wallet.deposit(createOperation({ amountCents: 100 }));
+    await vi.waitFor(() =>
+      expect(observedC.wallet.getCurrentResult().data?.totalCents).toBe(19234),
+    );
+
+    const restored = depositAttempt(c.api.wallet.deposit, store, c.id);
+
+    expect(restored.operation).toEqual(operation);
+
+    const replay = await restored.submit({ amountCents: 777 });
+
+    expect(replay.data.wallet.totalCents).toBe(19134);
+    expect(restored.operation).toBeUndefined();
+    expect(store.length).toBe(0);
+    await c.cache.invalidateQueries({ queryKey: ['private', c.id] });
+    expect(observedC.wallet.getCurrentResult().data?.totalCents).toBe(19234);
+    expect(await entryCount()).toBe(3);
+  });
+
+  it('reserves two lots and paginates reservations without deriving totals from a partial page', async () => {
+    await d.api.wallet.deposit(createOperation({ amountCents: 10000 }));
+    await c.api.auctions.bid(lots[1]!.id, createOperation({ amountCents: 1000 }));
+    await c.api.auctions.bid(lots[2]!.id, createOperation({ amountCents: 2000 }));
+    await vi.waitFor(() => {
+      expect(observedC.wallet.getCurrentResult().data).toMatchObject({
+        totalCents: 19234,
+        reservedCents: 3000,
+        availableCents: 16234,
+      });
+      expect(observedC.reservations.getCurrentResult().hasNextPage).toBe(true);
+    });
+    await observedC.reservations.fetchNextPage();
+
+    const items = observedC.reservations
+      .getCurrentResult()
+      .data!.pages.flatMap((page) => page.items);
+
+    expect(new Set(items.map((item) => item.auctionId))).toEqual(
+      new Set([lots[1]!.id, lots[2]!.id]),
+    );
+    expect(items.map((item) => item.reservedForThisAuctionCents).sort((x, y) => x - y)).toEqual([
+      1000, 2000,
+    ]);
+    expect(observedC.reservations.getCurrentResult().hasNextPage).toBe(false);
+  });
+
+  it('releases the outbid reservation on both real clients without changing either total', async () => {
+    await d.api.auctions.bid(lots[1]!.id, createOperation({ amountCents: 1100 }));
+    await vi.waitFor(() => {
+      expect(observedC.wallet.getCurrentResult().data).toMatchObject({
+        totalCents: 19234,
+        reservedCents: 2000,
+        availableCents: 17234,
+      });
+      expect(observedD.wallet.getCurrentResult().data).toMatchObject({
+        totalCents: 10000,
+        reservedCents: 1100,
+        availableCents: 8900,
+      });
+      expect(
+        observedC.reservations
+          .getCurrentResult()
+          .data?.pages.flatMap((page) => page.items)
+          .filter((item) => item.reservedForThisAuctionCents > 0)
+          .map((item) => item.auctionId),
+      ).toEqual([lots[2]!.id]);
+    });
+  });
+
+  it('reconciles settlement debits and clears reservations via real server events', async () => {
+    configure({ now: now + 710001, reconcileSettlements: true });
+    await vi.waitFor(
+      () => {
+        expect(observedC.wallet.getCurrentResult().data).toMatchObject({
+          totalCents: 17234,
+          reservedCents: 0,
+          availableCents: 17234,
+        });
+        expect(observedD.wallet.getCurrentResult().data).toMatchObject({
+          totalCents: 8900,
+          reservedCents: 0,
+          availableCents: 8900,
+        });
+        expect(
+          observedC.reservations.getCurrentResult().data?.pages.flatMap((page) => page.items),
+        ).toEqual([]);
+        expect(
+          observedD.reservations.getCurrentResult().data?.pages.flatMap((page) => page.items),
+        ).toEqual([]);
+      },
+      { timeout: 10000, interval: 100 },
+    );
+    configure({ reconcileSettlements: false });
+    expect(c.events).toContain('wallet.updated');
+    expect(d.events).toContain('participation.updated');
+    expect(await entryCount()).toBe(3);
+  });
+  it('handles balance-limit rejection, correction and throttling while allowing exact idempotent replay', async () => {
+    const attempt = depositAttempt(c.api.wallet.deposit, store, c.id);
+
+    await expect(attempt.submit({ amountCents: 100_000_000_000 })).rejects.toMatchObject({
+      status: 422,
+      problem: { code: 'BALANCE_LIMIT_EXCEEDED' },
+    });
+    expect(attempt.operation).toBeUndefined();
+    expect((await c.api.wallet.get()).totalCents).toBe(17234);
+
+    const accepted = attempt.submit({ amountCents: 1 });
+    const operation = attempt.operation!;
+    const result = await accepted;
+
+    expect(result.data.wallet.totalCents).toBe(17235);
+    expect(attempt.operation).toBeUndefined();
+
+    const rejection = await attempt.submit({ amountCents: 1 }).catch((error: unknown) => error);
+
+    expect(rejection).toMatchObject({ status: 429, retryAfterMs: expect.any(Number) });
+    expect(errorMessage(rejection)).toContain('Muitas tentativas');
+    expect(attempt.operation).toBeUndefined();
+
+    const replay = await c.api.wallet.deposit(operation);
+
+    expect(replay.data.depositId).toBe(result.data.depositId);
+    expect(await entryCount()).toBe(4);
+    await vi.waitFor(() =>
+      expect(observedC.wallet.getCurrentResult().data?.totalCents).toBe(17235),
+    );
   });
 });

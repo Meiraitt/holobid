@@ -21,9 +21,10 @@ horário do servidor com tempo monotônico para o contador. Só anuncia arremate
 liquidação e verificação confirmadas. Operações incertas preservam chave e valor
 por conta/lote/aba no sessionStorage; uma repetição consulta a mesma solicitação.
 O painel usa totais globais do servidor e cancela lotes sem lances, preservando histórico.
-Carteira (depósitos), participações, comprovantes e auditoria ainda exibem dados de
-demonstração. O saldo exibido na sala já é real; depósitos para estes testes são
-feitos pela API. A conexão é recriada após renovação de JWT/logout; salas aguardam
+A carteira consulta saldo total, reservado e disponível reais e os lotes com
+reserva. Depósitos simulados são persistidos pela API, com confirmação, prevenção
+de duplo envio e recuperação da mesma solicitação após falha de rede.
+Participações, comprovantes e auditoria ainda exibem dados de demonstração. A conexão é recriada após renovação de JWT/logout; salas aguardam
 ACK e novos snapshots antes de liberar lances. Refetch a cada 30 segundos e ao
 retomar foco complementa os eventos. A navegação da
 sala para a auditoria/comprovante aguarda as respectivas views integradas.
@@ -784,22 +785,21 @@ Frontend visual preview
 
 Run npm ci and npm run dev:web, then open http://localhost:5173.
 The React/Vite application uses Tailwind and locally customized shadcn/Base UI components.
-Use the header to choose a bidder, auctioneer or visitor demo profile. Every interaction is
-local to the current tab: reloading restores the examples. Passwords and account data are
-not stored. Only the visual theme preference is saved. No request is sent to the API.
+Authentication, auctions, bidding, wallet and auctioneer management use the real API.
+Remaining preview views are explicitly identified. Simulated money persists on the backend;
+pending mutations are journaled per account in sessionStorage. Never use real payment details.
 
 After the view PRs are merged, routes include: /auctions, /auctions/:auctionId, /login, /register, /wallet, /participations,
 /my-auctions, /auctions/new, /auctions/:auctionId/audit, /receipts/:receiptId and /design-system.
 The design system documents actual reusable buttons, fields, cards, dialogs, notifications
 and status components in light/dark modes. A sun/moon button toggles the saved theme; dark is the default.
 App only composes routed views.
-The static demo includes successful, empty, pending and failed states. Audit hashes are
-illustrative; real authentication, HTTP, Socket.IO and server verification remain separate
-integration work. The visual demo must not be presented as the completed technical test.
+The remaining participation, receipt and audit previews include illustrative states and hashes.
+Their integration is still pending; do not treat those previews as server verification.
 
 Frontend checks: npm run test:web, npm run build:web, npm run typecheck and npm run lint.
-The six focused frontend tests validate monetary parsing, demo reservations, bid rules,
-permission checks and deadline extension. npm run check also includes these tests.
+Frontend tests cover money, mutation recovery, permissions, HTTP contracts and connection
+lifecycle. npm run check also exercises the real API/PostgreSQL/WebSocket integration suites.
 
 Frontend e autenticação (FE-02 / FE-04)
 -------------------------------------
@@ -819,8 +819,7 @@ modernos com Web Locks suportam a coordenação entre abas; o fallback
 serializa somente operações da própria aba.
 
 Login, cadastro, refresh, consulta de usuário e logout estão integrados.
-As demais views mantêm a prévia visual, identificada na tela, até suas tasks
-de integração. O saldo visual não representa a carteira real da conta.
+O estado atual das demais views está descrito no início deste arquivo.
 
     npm run test:web
     npm run test:auth
@@ -867,3 +866,19 @@ Frontend realtime acceptance (FE-09)
   Covers subscription ACK, bids, wallet/position updates, private isolation,
   transport loss, missed notifications, token refresh/expiry, remote revocation
   and subscription cleanup. Included in npm run check and the Docker checks stage.
+
+Carteira integrada (FE-10)
+-------------------------
+/wallet usa GET /wallet e GET /me/participations?filter=active, com paginação
+para reservas. Total, reservado e disponível vêm do servidor; a lista paginada
+não calcula os totais globais. A sala compartilha a mesma consulta de carteira.
+
+POST /wallet/deposits recebe centavos inteiros e Idempotency-Key. A chave e o
+valor ficam em sessionStorage por conta/aba até confirmação. Envio duplo é
+coalescido; resposta perdida permite consultar exatamente a mesma operação.
+Replay não aplica um saldo antigo: a tela refaz GET /wallet. wallet.updated e
+participation.updated invalidam saldos e reservas; foco/refetch de 30s são fallback.
+O depósito é simulado e nunca inicia pagamento real.
+
+npm run test:realtime inclui depósitos, perda de resposta, replay, reservas em
+dois lotes, superação e liquidação, com HTTP e WebSocket reais e bancos isolados.
