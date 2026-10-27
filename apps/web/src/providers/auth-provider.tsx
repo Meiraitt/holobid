@@ -47,13 +47,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return <AuthContext.Provider value={session}>{children}</AuthContext.Provider>;
 }
 
-export function useAuth() {
+export function useSessionController() {
   const controller = useContext(AuthContext);
 
   if (!controller) {
     throw new Error('useAuth requires AuthProvider');
   }
 
+  return controller;
+}
+
+export function useAuth() {
+  const controller = useSessionController();
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
 
   return {

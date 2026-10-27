@@ -14,7 +14,8 @@ export function roomOptions(id: string, service: Auctions = api.auctions) {
 
       return { auction, receivedAt: performance.now() };
     },
-    refetchInterval: 5000,
+    // Periodic reconciliation also recovers notifications missed before a restart.
+    refetchInterval: 30000,
     refetchOnWindowFocus: 'always',
   });
 }
@@ -25,7 +26,8 @@ export function historyOptions(id: string, service: Auctions = api.auctions, lim
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam, signal }) => service.bids(id, { cursor: pageParam, limit }, signal),
     getNextPageParam: (page) => page.nextCursor ?? undefined,
-    refetchInterval: 5000,
+    // Periodic reconciliation also recovers notifications missed before a restart.
+    refetchInterval: 30000,
     refetchOnWindowFocus: 'always',
   });
 }
@@ -34,7 +36,8 @@ export function myBidOptions(userId: string, id: string, service: Auctions = api
   return queryOptions({
     queryKey: queryKeys.private(userId, 'auction-position', { id }),
     queryFn: ({ signal }) => service.mine(id, signal),
-    refetchInterval: 5000,
+    // Periodic reconciliation also recovers notifications missed before a restart.
+    refetchInterval: 30000,
     refetchOnWindowFocus: 'always',
   });
 }

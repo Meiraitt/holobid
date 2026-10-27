@@ -7,6 +7,7 @@ import { DemoProvider } from '../demo/demo-provider';
 import { queryClient } from '../lib/query-client';
 
 import { AuthProvider, useAuth } from './auth-provider';
+import { RealtimeProvider } from './realtime-provider';
 import { ThemeProvider } from './theme-provider';
 
 export function AppProviders({ children }: { children: ReactNode }) {
@@ -14,11 +15,13 @@ export function AppProviders({ children }: { children: ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <AuthProvider>
-          <SessionDemo>
-            <BrowserRouter>
-              <Toaster>{children}</Toaster>
-            </BrowserRouter>
-          </SessionDemo>
+          <RealtimeProvider>
+            <SessionDemo>
+              <BrowserRouter>
+                <Toaster>{children}</Toaster>
+              </BrowserRouter>
+            </SessionDemo>
+          </RealtimeProvider>
         </AuthProvider>
       </ThemeProvider>
     </QueryClientProvider>

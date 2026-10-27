@@ -19,7 +19,8 @@
     "test:http": "node scripts/test-database.mjs --http",
     "test:http:live": "node scripts/test-database.mjs --http-live",
     "test:auth": "node scripts/test-database.mjs --auth",
-    "test:auctions": "node scripts/test-database.mjs --web-auctions"
+    "test:auctions": "node scripts/test-database.mjs --web-auctions",
+    "test:realtime": "node scripts/test-database.mjs --web-realtime"
   },
   "dependencies": {
     "@holobid/contracts": "0.0.0",

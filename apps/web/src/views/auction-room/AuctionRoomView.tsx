@@ -11,6 +11,7 @@ import { toast } from '../../components/ui/toast';
 import { formatDate, formatMoney } from '../../lib/format';
 import { queryKeys } from '../../lib/query-client';
 import { useAuth } from '../../providers/auth-provider';
+import { useRealtimeRoom } from '../../providers/realtime-provider';
 import { api, apiClient } from '../../services';
 import { ApiRequestError, errorMessage } from '../../services/api-error';
 import { mediaUrl } from '../../services/media-url';
@@ -38,18 +39,20 @@ export function AuctionRoomView() {
 
 function Room({ id }: { id: string }) {
   const { user, status: authStatus } = useAuth();
-  const room = useQuery(roomOptions(id));
+  const realtime = useRealtimeRoom(id);
+  const subscribed = realtime.room === 'joined' || realtime.room === 'missing';
+  const room = useQuery({ ...roomOptions(id), enabled: subscribed });
   const auction = room.data?.auction;
   const isBidder = user?.role === 'BIDDER';
   const position = useQuery({
     ...myBidOptions(user?.id ?? '', id),
-    enabled: Boolean(isBidder && auction),
+    enabled: Boolean(isBidder && auction && subscribed),
   });
   const wallet = useQuery({
     queryKey: queryKeys.private(user?.id ?? '', 'wallet'),
     queryFn: ({ signal }) => api.wallet.get(signal),
-    enabled: Boolean(isBidder && auction),
-    refetchInterval: 5000,
+    enabled: Boolean(isBidder && auction && subscribed),
+    refetchInterval: 30000,
     refetchOnWindowFocus: 'always',
   });
   const now = useServerClock(
@@ -76,6 +79,7 @@ function Room({ id }: { id: string }) {
   }, [expired, boundaryKey, auction?.status, refetch]);
 
   async function refresh() {
+    realtime.retry();
     await Promise.all([
       room.refetch(),
       ...(isBidder ? [position.refetch(), wallet.refetch()] : []),
@@ -93,6 +97,19 @@ function Room({ id }: { id: string }) {
         'O navegador não permitiu acessar a área de transferência.',
       );
     }
+  }
+
+  if (
+    realtime.room === 'unavailable' ||
+    (!auction && ['disconnected', 'unavailable'].includes(realtime.phase))
+  ) {
+    return (
+      <EmptyState
+        title="Conexão com a sala indisponível"
+        description="Não foi possível sincronizar o lote. Reconecte para carregar os dados atuais."
+        action={<Button onClick={realtime.retry}>Reconectar</Button>}
+      />
+    );
   }
 
   if (room.isPending) {
@@ -125,7 +142,12 @@ function Room({ id }: { id: string }) {
 
   const age = now === null ? Infinity : now - Date.parse(auction.serverTime);
   const updatesPaused =
-    room.isError || age > 15000 || expired || !position.isSuccess || !wallet.isSuccess;
+    !realtime.ready ||
+    room.isError ||
+    age > 45000 ||
+    expired ||
+    !position.isSuccess ||
+    !wallet.isSuccess;
   const privateFailure = isBidder && (position.isError || wallet.isError);
   const attributes = [
     ['Tipo', auction.attributes.types?.join(', ')],
@@ -166,7 +188,7 @@ function Room({ id }: { id: string }) {
           />
         </Field>
       )}
-      {(room.isError || privateFailure || age > 15000) && (
+      {(room.isError || privateFailure || age > 45000) && (
         <div role="alert" className="space-y-3 border-l-2 border-warning bg-muted p-4">
           <p>
             Atualização indisponível. Os dados exibidos podem estar desatualizados e novos lances
@@ -206,7 +228,9 @@ function Room({ id }: { id: string }) {
             >
               {labels[auction.status]}
             </StatusBadge>
-            <span className="text-sm text-muted-foreground">Atualiza a cada 5 segundos</span>
+            <span className="text-sm text-muted-foreground">
+              {realtime.ready ? 'Atualizações ao vivo' : 'Sincronizando sala…'}
+            </span>
           </div>
           {deadline &&
             now !== null &&
