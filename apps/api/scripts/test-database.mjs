@@ -10,8 +10,9 @@ import { processDatabases } from './test-postgres-process.mjs';
 const demo = process.argv[2] === '--tamper-demo';
 const http = ['--http', '--http-live'].includes(process.argv[2]);
 const auth = process.argv[2] === '--auth';
+const web = process.argv[2] === '--web-auctions';
 
-if (process.argv.length > 2 && ((!demo && !http && !auth) || process.argv.length !== 3)) {
+if (process.argv.length > 2 && ((!demo && !http && !auth && !web) || process.argv.length !== 3)) {
   throw new Error('Unsupported database runner arguments.');
 }
 
@@ -27,7 +28,12 @@ if (!['docker', 'process'].includes(databaseMode)) {
 }
 
 const ciServices =
-  databaseMode === 'docker' && !http && !demo && !auth && process.env.GITHUB_ACTIONS === 'true';
+  databaseMode === 'docker' &&
+  !http &&
+  !demo &&
+  !auth &&
+  !web &&
+  process.env.GITHUB_ACTIONS === 'true';
 const names = ciServices
   ? [process.env.HOLOBID_CI_MAIN_CONTAINER, process.env.HOLOBID_CI_AUDIT_CONTAINER]
   : [`holobid-main-test-${randomUUID()}`, `holobid-audit-test-${randomUUID()}`];
@@ -169,7 +175,9 @@ try {
     run('npm', ['run', 'db:audit:migrate'], { env });
   }
 
-  if (auth) {
+  if (web) {
+    run(process.execPath, ['scripts/web-auctions-acceptance.mjs'], { env });
+  } else if (auth) {
     run(process.execPath, ['scripts/web-auth-acceptance.mjs'], { env });
   } else if (http) {
     run(process.execPath, ['scripts/http-acceptance.mjs'], {

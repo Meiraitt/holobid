@@ -1,12 +1,15 @@
-import { useRef, useState } from 'react';
+import { useInfiniteQuery } from '@tanstack/react-query';
+import { useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import { AuctionCard } from '../../components/shared/auction-card';
 import { EmptyState } from '../../components/shared/empty-state';
 import { PageHeader } from '../../components/shared/page-header';
 import { Button, buttonVariants } from '../../components/ui/button';
-import { NativeSelect } from '../../components/ui/input';
-import { useDemo } from '../../demo/demo-provider';
+import { useAuth } from '../../providers/auth-provider';
+import { errorMessage } from '../../services/api-error';
+
+import { auctionCardData, auctionListOptions, type PublicStatus } from './auction-queries';
 
 const filters = [
   { value: 'live', label: 'Ao vivo' },
@@ -16,20 +19,20 @@ const filters = [
 
 type AuctionFilter = (typeof filters)[number]['value'];
 
-type PreviewState = 'content' | 'loading' | 'empty' | 'error';
-
-const pageSize = 4;
-
 export function AuctionsView() {
-  const { auctions, user } = useDemo();
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [visibleCount, setVisibleCount] = useState(pageSize);
-  const [previewState, setPreviewState] = useState<PreviewState>('content');
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const requestedFilter = searchParams.get('status');
   const activeFilter = filters.find((filter) => filter.value === requestedFilter)?.value ?? 'live';
-  const filteredAuctions = auctions.filter((auction) => auction.status === activeFilter);
-  const visibleAuctions = filteredAuctions.slice(0, visibleCount);
+  const query = useInfiniteQuery(auctionListOptions(activeFilter.toUpperCase() as PublicStatus));
+  const visibleAuctions = [
+    ...new Map(
+      (query.data?.pages.flatMap((page) => page.items) ?? [])
+        .filter((auction) => auction.status !== 'CANCELLED')
+        .map((auction) => [auction.id, auction]),
+    ).values(),
+  ];
   const emptyMessages = {
     live: 'Nenhum lote ao vivo neste momento. Veja o que está agendado para a próxima rodada.',
     scheduled: 'Ainda não há lotes agendados. As cartas disponíveis estão na aba Ao vivo.',
@@ -38,7 +41,6 @@ export function AuctionsView() {
 
   function selectFilter(filter: AuctionFilter) {
     setSearchParams({ status: filter });
-    setVisibleCount(pageSize);
   }
 
   function moveTab(key: string, index: number) {
@@ -68,7 +70,7 @@ export function AuctionsView() {
         title="Leilões de cartas"
         description="Encontre a próxima carta da sua coleção. Confira o lance, o prazo e entre na sala."
         action={
-          user?.role === 'auctioneer' ? (
+          user?.role === 'AUCTIONEER' ? (
             <Link to="/auctions/new" className={buttonVariants()}>
               Criar lote
             </Link>
@@ -103,9 +105,6 @@ export function AuctionsView() {
               className={`min-h-12 border-b-2 px-3 pb-3 pt-2 font-semibold transition-colors ${activeFilter === filter.value ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
             >
               {filter.label}
-              <span className="ml-2 text-sm tabular-nums text-muted-foreground">
-                {auctions.filter((auction) => auction.status === filter.value).length}
-              </span>
             </button>
           ))}
         </div>
@@ -116,13 +115,13 @@ export function AuctionsView() {
         role="tabpanel"
         aria-labelledby={`auction-tab-${activeFilter}`}
         tabIndex={0}
-        aria-busy={previewState === 'loading'}
+        aria-busy={query.isPending}
         className="min-h-80"
       >
-        {previewState === 'loading' ? (
+        {query.isPending ? (
           <>
             <p role="status" className="sr-only">
-              Carregando lotes da demonstração.
+              Carregando leilões.
             </p>
             <div aria-hidden="true" className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
               {Array.from({ length: 4 }, (_, index) => (
@@ -135,25 +134,20 @@ export function AuctionsView() {
               ))}
             </div>
           </>
-        ) : previewState === 'error' ? (
+        ) : query.isError && !query.data ? (
           <EmptyState
             title="Não foi possível carregar os leilões"
-            description="Este é um estado de erro demonstrativo. Tente novamente para voltar aos lotes."
-            action={<Button onClick={() => setPreviewState('content')}>Tentar novamente</Button>}
+            description={errorMessage(query.error)}
+            action={<Button onClick={() => void query.refetch()}>Tentar novamente</Button>}
           />
-        ) : previewState === 'empty' || filteredAuctions.length === 0 ? (
+        ) : visibleAuctions.length === 0 ? (
           <EmptyState
-            title={
-              previewState === 'empty'
-                ? 'Nenhum lote nesta seleção'
-                : 'Novas cartas chegam em breve'
-            }
+            title="Novas cartas chegam em breve"
             description={emptyMessages[activeFilter]}
             action={
               <Button
                 variant="outline"
                 onClick={() => {
-                  setPreviewState('content');
                   selectFilter(activeFilter === 'live' ? 'scheduled' : 'live');
                 }}
               >
@@ -165,17 +159,19 @@ export function AuctionsView() {
           <>
             <div className="grid gap-x-6 gap-y-9 sm:grid-cols-2 xl:grid-cols-4">
               {visibleAuctions.map((auction) => (
-                <AuctionCard key={auction.id} auction={auction} />
+                <AuctionCard key={auction.id} auction={auctionCardData(auction)} />
               ))}
             </div>
             <div className="mt-9 flex flex-wrap items-center justify-center gap-4 border-t border-border pt-6">
               <p className="text-sm text-muted-foreground" role="status">
-                {visibleAuctions.length} de {filteredAuctions.length} lotes nesta seleção
+                {visibleAuctions.length}{' '}
+                {visibleAuctions.length === 1 ? 'lote carregado' : 'lotes carregados'} nesta seleção
               </p>
-              {visibleCount < filteredAuctions.length && (
+              {query.hasNextPage && (
                 <Button
                   variant="outline"
-                  onClick={() => setVisibleCount((count) => count + pageSize)}
+                  loading={query.isFetchingNextPage}
+                  onClick={() => void query.fetchNextPage()}
                 >
                   Carregar mais lotes
                 </Button>
@@ -184,22 +180,25 @@ export function AuctionsView() {
           </>
         )}
       </div>
-      <details className="border-t border-border pt-5 text-sm text-muted-foreground">
-        <summary className="w-fit cursor-pointer py-2">Visualizar estados da demonstração</summary>
-        <div className="mt-3 max-w-xs space-y-2">
-          <label htmlFor="auctions-preview">Estado da vitrine</label>
-          <NativeSelect
-            id="auctions-preview"
-            value={previewState}
-            onChange={(event) => setPreviewState(event.target.value as PreviewState)}
+      {query.isError && query.data && (
+        <div role="alert" className="space-y-3 border-l-2 border-warning p-4">
+          <p>
+            Não foi possível atualizar todos os lotes. Os dados exibidos podem estar desatualizados.
+          </p>
+          <Button
+            variant="outline"
+            loading={query.isFetching}
+            onClick={() =>
+              void (query.isFetchNextPageError ? query.fetchNextPage() : query.refetch())
+            }
           >
-            <option value="content">Lotes disponíveis</option>
-            <option value="loading">Carregando</option>
-            <option value="empty">Sem lotes</option>
-            <option value="error">Falha de carregamento</option>
-          </NativeSelect>
+            Tentar novamente
+          </Button>
         </div>
-      </details>
+      )}
+      <p className="text-sm text-muted-foreground">
+        Horários de Brasília · Atualização a cada 15 segundos.
+      </p>
     </section>
   );
 }

@@ -17,7 +17,8 @@ export function CardArtwork({
   zoom?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failedSource, setFailedSource] = useState<string | null>(null);
+  const failed = !src || failedSource === src;
 
   return (
     <div
@@ -37,7 +38,7 @@ export function CardArtwork({
           src={src}
           alt={alt}
           loading="lazy"
-          onError={() => setFailed(true)}
+          onError={() => setFailedSource(src)}
           className="h-full max-h-full w-auto max-w-full object-contain drop-shadow-lg"
         />
       )}

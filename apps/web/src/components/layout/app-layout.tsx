@@ -91,9 +91,7 @@ export function AppLayout() {
       </a>
       <div className="no-print border-b bg-muted/70">
         <div className="page-container flex min-h-9 flex-wrap items-center justify-between gap-x-4 gap-y-1 py-1 text-xs text-muted-foreground">
-          <span>
-            Cadastro e login conectados · Leilões e saldos ainda usam dados de demonstração
-          </span>
+          <span>Autenticação e vitrine conectadas · Carteira e painéis ainda em demonstração</span>
         </div>
       </div>
       <header className="border-b">

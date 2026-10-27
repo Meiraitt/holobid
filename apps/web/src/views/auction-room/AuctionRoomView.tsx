@@ -15,6 +15,7 @@ import { BidForm } from './components/BidForm';
 import { BidHistory } from './components/BidHistory';
 import { Countdown } from './components/Countdown';
 import { MyBidStatus } from './components/MyBidStatus';
+import { PublicAuctionView } from './PublicAuctionView';
 
 const statusLabels = {
   live: { label: 'Ao vivo', tone: 'success' },
@@ -26,6 +27,16 @@ const statusLabels = {
 type UpdateState = 'ready' | 'reconnecting' | 'offline';
 
 export function AuctionRoomView() {
+  const { auctionId = '' } = useParams();
+
+  return /^[0-9a-f-]{36}$/i.test(auctionId) ? (
+    <PublicAuctionView id={auctionId} />
+  ) : (
+    <DemoAuctionRoomView />
+  );
+}
+
+function DemoAuctionRoomView() {
   const { auctionId } = useParams();
   const { auctions, bids, user } = useDemo();
   const [updateState, setUpdateState] = useState<UpdateState>('ready');
