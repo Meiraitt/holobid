@@ -1,47 +1,86 @@
-import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { CardArtwork } from '../../components/shared/card-artwork';
 import { EmptyState } from '../../components/shared/empty-state';
 import { StatusBadge } from '../../components/shared/status-badge';
 import { Button, buttonVariants } from '../../components/ui/button';
-import { Field, Input, NativeSelect } from '../../components/ui/input';
+import { Field, Input } from '../../components/ui/input';
 import { toast } from '../../components/ui/toast';
-import { useDemo } from '../../demo/demo-provider';
 import { formatDate, formatMoney } from '../../lib/format';
+import { queryKeys } from '../../lib/query-client';
+import { useAuth } from '../../providers/auth-provider';
+import { api, apiClient } from '../../services';
+import { ApiRequestError, errorMessage } from '../../services/api-error';
+import { mediaUrl } from '../../services/media-url';
 
-import { AuctionOutcome } from './components/AuctionOutcome';
+import { AuctionOutcome, confirmedOutcome } from './components/AuctionOutcome';
 import { BidForm } from './components/BidForm';
 import { BidHistory } from './components/BidHistory';
 import { Countdown } from './components/Countdown';
 import { MyBidStatus } from './components/MyBidStatus';
-import { PublicAuctionView } from './PublicAuctionView';
+import { myBidOptions, roomOptions } from './room-queries';
+import { useServerClock } from './server-clock';
 
-const statusLabels = {
-  live: { label: 'Ao vivo', tone: 'success' },
-  scheduled: { label: 'Agendado', tone: 'info' },
-  ended: { label: 'Encerrado', tone: 'neutral' },
-  cancelled: { label: 'Cancelado', tone: 'danger' },
-} as const;
-
-type UpdateState = 'ready' | 'reconnecting' | 'offline';
+const labels = {
+  LIVE: 'Ao vivo',
+  SCHEDULED: 'Agendado',
+  ENDED: 'Encerrado',
+  CANCELLED: 'Cancelado',
+};
 
 export function AuctionRoomView() {
   const { auctionId = '' } = useParams();
 
-  return /^[0-9a-f-]{36}$/i.test(auctionId) ? (
-    <PublicAuctionView id={auctionId} />
-  ) : (
-    <DemoAuctionRoomView />
-  );
+  return <Room key={auctionId} id={auctionId} />;
 }
 
-function DemoAuctionRoomView() {
-  const { auctionId } = useParams();
-  const { auctions, bids, user } = useDemo();
-  const [updateState, setUpdateState] = useState<UpdateState>('ready');
+function Room({ id }: { id: string }) {
+  const { user, status: authStatus } = useAuth();
+  const room = useQuery(roomOptions(id));
+  const auction = room.data?.auction;
+  const isBidder = user?.role === 'BIDDER';
+  const position = useQuery({
+    ...myBidOptions(user?.id ?? '', id),
+    enabled: Boolean(isBidder && auction),
+  });
+  const wallet = useQuery({
+    queryKey: queryKeys.private(user?.id ?? '', 'wallet'),
+    queryFn: ({ signal }) => api.wallet.get(signal),
+    enabled: Boolean(isBidder && auction),
+    refetchInterval: 5000,
+    refetchOnWindowFocus: 'always',
+  });
+  const now = useServerClock(
+    room.data
+      ? { serverTime: room.data.auction.serverTime, receivedAt: room.data.receivedAt }
+      : undefined,
+  );
   const [shareFallback, setShareFallback] = useState('');
-  const auction = auctions.find((item) => item.id === auctionId);
+  const lastBoundary = useRef('');
+  const deadline = auction?.status === 'SCHEDULED' ? auction.startsAt : auction?.endsAt;
+  const expired = now !== null && deadline !== undefined && now >= Date.parse(deadline);
+  const boundaryKey = `${auction?.status}:${deadline}`;
+  const { refetch } = room;
+
+  useEffect(() => {
+    if (
+      expired &&
+      lastBoundary.current !== boundaryKey &&
+      (auction?.status === 'SCHEDULED' || auction?.status === 'LIVE')
+    ) {
+      lastBoundary.current = boundaryKey;
+      void refetch();
+    }
+  }, [expired, boundaryKey, auction?.status, refetch]);
+
+  async function refresh() {
+    await Promise.all([
+      room.refetch(),
+      ...(isBidder ? [position.refetch(), wallet.refetch()] : []),
+    ]);
+  }
 
   async function copyLink() {
     try {
@@ -50,45 +89,67 @@ function DemoAuctionRoomView() {
     } catch {
       setShareFallback(window.location.href);
       toast.info(
-        'Copie o endereço do campo abaixo',
+        'Copie o endereço abaixo',
         'O navegador não permitiu acessar a área de transferência.',
       );
     }
   }
 
-  if (!auction) {
+  if (room.isPending) {
+    return <p role="status">Carregando lote…</p>;
+  }
+
+  if (
+    !auction ||
+    (room.error instanceof ApiRequestError && [400, 404].includes(room.error.status))
+  ) {
     return (
       <EmptyState
-        title="Lote não encontrado"
-        description="Este endereço não corresponde a um lote da demonstração. Explore as cartas disponíveis."
+        title="Lote indisponível"
+        description={
+          room.error instanceof ApiRequestError && [400, 404].includes(room.error.status)
+            ? 'Este lote não existe ou foi retirado da vitrine.'
+            : errorMessage(room.error)
+        }
         action={
-          <Link to="/auctions" className={buttonVariants()}>
-            Voltar aos leilões
-          </Link>
+          <>
+            <Button onClick={() => void room.refetch()}>Tentar novamente</Button>
+            <Link to="/auctions" className={buttonVariants({ variant: 'ghost' })}>
+              Voltar aos leilões
+            </Link>
+          </>
         }
       />
     );
   }
 
-  const status = statusLabels[auction.status];
-  const auctionBids = bids.filter((bid) => bid.auctionId === auction.id);
-  const isBidder = user?.role === 'bidder';
+  const age = now === null ? Infinity : now - Date.parse(auction.serverTime);
+  const updatesPaused =
+    room.isError || age > 15000 || expired || !position.isSuccess || !wallet.isSuccess;
+  const privateFailure = isBidder && (position.isError || wallet.isError);
+  const attributes = [
+    ['Tipo', auction.attributes.types?.join(', ')],
+    ['Raridade', auction.attributes.rarity],
+    ['Ilustrador', auction.attributes.illustrator],
+    ['Pontos de vida', auction.attributes.hp],
+    ['Origem', 'Catálogo TCGdex'],
+  ];
 
   return (
     <section className="space-y-8">
       <Link
         to="/auctions"
-        className="inline-flex min-h-11 items-center font-semibold text-info underline-offset-4 hover:underline"
+        className="inline-flex min-h-11 items-center font-semibold text-info hover:underline"
       >
         Voltar aos leilões
       </Link>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="font-display text-4xl font-semibold leading-tight sm:text-5xl">
-            {auction.card.name}
+            {auction.title}
           </h1>
           <p className="mt-2 text-lg text-muted-foreground">
-            {auction.card.edition} · Carta {auction.card.number}
+            {auction.setName} · Carta {auction.cardNumber}
           </p>
         </div>
         <Button variant="outline" onClick={() => void copyLink()}>
@@ -96,200 +157,177 @@ function DemoAuctionRoomView() {
         </Button>
       </div>
       {shareFallback && (
-        <Field
-          label="Link público do lote"
-          htmlFor="auction-share-link"
-          hint="Selecione e copie este endereço."
-        >
+        <Field label="Link público do lote" htmlFor="auction-share-link">
           <Input
             id="auction-share-link"
-            aria-describedby="auction-share-link-hint"
             readOnly
             value={shareFallback}
             onFocus={(event) => event.target.select()}
           />
         </Field>
       )}
-      {updateState !== 'ready' && (
-        <div
-          role="status"
-          className="flex flex-wrap items-center justify-between gap-3 border-l-2 border-warning bg-muted p-4"
-        >
-          <div>
-            <p className="font-semibold text-warning">
-              {updateState === 'offline' ? 'Atualizações pausadas' : 'Reconectando à sala'}
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Prévia de conexão indisponível. Os lances ficam bloqueados até os dados serem
-              atualizados.
-            </p>
-          </div>
+      {(room.isError || privateFailure || age > 15000) && (
+        <div role="alert" className="space-y-3 border-l-2 border-warning bg-muted p-4">
+          <p>
+            Atualização indisponível. Os dados exibidos podem estar desatualizados e novos lances
+            estão bloqueados.
+          </p>
           <Button
             variant="outline"
-            onClick={() => {
-              setUpdateState('ready');
-              toast.info(
-                'Demonstração reconectada',
-                'Os dados locais estão disponíveis novamente.',
-              );
-            }}
+            loading={room.isFetching || position.isFetching || wallet.isFetching}
+            onClick={() => void refresh()}
           >
-            Restaurar demonstração
+            Atualizar sala
           </Button>
         </div>
       )}
-
       <div className="grid items-start gap-8 lg:grid-cols-12 lg:gap-10">
-        <div className="rounded-lg bg-muted px-5 py-7 sm:px-10 sm:py-9 lg:col-span-7 lg:col-start-1 lg:row-start-1">
+        <div className="rounded-lg bg-muted px-5 py-7 sm:px-10 sm:py-9 lg:col-span-7">
           <CardArtwork
-            src={auction.card.image}
-            alt={`${auction.card.name}, ${auction.card.edition}, carta ${auction.card.number}`}
+            src={mediaUrl(auction.imageUrl, apiClient.origin)}
+            alt={`${auction.title}, ${auction.setName}, carta ${auction.cardNumber}`}
             className="mx-auto h-80 w-full sm:h-[440px]"
             zoom
           />
         </div>
-
         <aside
           aria-label="Lances e situação do lote"
-          className="space-y-6 rounded-xl border border-border bg-card p-5 sm:p-7 lg:col-span-5 lg:col-start-8 lg:row-span-2 lg:row-start-1"
+          className="space-y-6 rounded-xl border border-border bg-card p-5 sm:p-7 lg:col-span-5 lg:row-span-2"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
-            <span className="text-sm text-muted-foreground">
-              {updateState === 'ready' ? 'Dados de demonstração' : 'Atualização pausada'}
-            </span>
+            <StatusBadge
+              tone={
+                auction.status === 'LIVE'
+                  ? 'success'
+                  : auction.status === 'SCHEDULED'
+                    ? 'info'
+                    : 'neutral'
+              }
+            >
+              {labels[auction.status]}
+            </StatusBadge>
+            <span className="text-sm text-muted-foreground">Atualiza a cada 5 segundos</span>
           </div>
-          {auction.status === 'live' || auction.status === 'scheduled' ? (
-            <Countdown
-              key={`${auction.id}-${auction.status}`}
-              deadline={auction.status === 'scheduled' ? auction.startsAt : auction.endsAt}
-              scheduled={auction.status === 'scheduled'}
-            />
-          ) : (
-            <div className="text-sm text-muted-foreground">
-              <p>{auction.status === 'cancelled' ? 'Prazo original do lote' : 'Encerrado em'}</p>
-              <time dateTime={auction.endsAt}>{formatDate(auction.endsAt)}</time>
-            </div>
+          {deadline &&
+            now !== null &&
+            (auction.status === 'LIVE' || auction.status === 'SCHEDULED') && (
+              <Countdown
+                key={auction.status}
+                deadline={deadline}
+                now={now}
+                scheduled={auction.status === 'SCHEDULED'}
+              />
+            )}
+          {auction.status === 'ENDED' && (
+            <p className="text-sm text-muted-foreground">
+              Encerrado em <time dateTime={auction.endsAt}>{formatDate(auction.endsAt)}</time> ·
+              Horário de Brasília
+            </p>
           )}
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="text-sm text-muted-foreground">
-                {auction.bidCount === 0
-                  ? 'Lance inicial'
-                  : auction.status === 'ended'
-                    ? 'Maior lance'
-                    : 'Lance atual'}
+                {auction.currentBidCents === null ? 'Lance inicial' : 'Maior lance'}
               </p>
               <p className="mt-1 font-display text-4xl font-semibold tabular-nums sm:text-5xl">
-                {formatMoney(
-                  auction.bidCount === 0 ? auction.startingBidCents : auction.currentBidCents,
-                )}
+                {formatMoney(auction.currentBidCents ?? auction.startingPriceCents)}
               </p>
             </div>
-            <p className="pb-1 text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               {auction.bidCount} {auction.bidCount === 1 ? 'lance' : 'lances'}
             </p>
           </div>
-          {isBidder &&
-            (auction.status === 'live' ||
-              (auction.status === 'ended' && auction.participation)) && (
-              <MyBidStatus auction={auction} />
-            )}
-          {auction.status === 'live' ? (
-            <BidForm key={auction.id} auction={auction} updatesPaused={updateState !== 'ready'} />
+          {isBidder && position.data && (
+            <MyBidStatus
+              position={position.data}
+              resultConfirmed={Boolean(confirmedOutcome(auction))}
+            />
+          )}
+          {auction.status !== 'LIVE' && <AuctionOutcome auction={auction} />}
+          {auction.status === 'LIVE' && !auction.canReceiveBids && (
+            <p role="status" className="text-warning">
+              O lote está em verificação. Aguarde a liberação dos lances pelo servidor.
+            </p>
+          )}
+          {authStatus === 'restoring' ? (
+            <p role="status">Verificando sua sessão…</p>
+          ) : !user ? (
+            <div className="space-y-3">
+              <p>Entre na sua conta para participar.</p>
+              <Link
+                to={`/login?returnTo=${encodeURIComponent(`/auctions/${id}`)}`}
+                className={buttonVariants({ className: 'w-full' })}
+              >
+                Entrar para dar lance
+              </Link>
+            </div>
+          ) : user.role === 'AUCTIONEER' ? (
+            <p className="text-sm text-muted-foreground">
+              Contas de leiloeiro acompanham os lances e resultados. Para gerenciar seus lotes,
+              acesse o painel.
+            </p>
+          ) : position.data && wallet.data ? (
+            <BidForm
+              key={user.id}
+              userId={user.id}
+              auction={auction}
+              wallet={wallet.data}
+              position={position.data}
+              updatesPaused={updatesPaused}
+            />
           ) : (
-            <AuctionOutcome auction={auction} />
-          )}
-          {auction.status === 'scheduled' && isBidder && (
-            <Link
-              to="/wallet"
-              className={buttonVariants({ variant: 'outline', className: 'w-full' })}
-            >
-              Preparar meu saldo simulado
-            </Link>
-          )}
-          {auction.status !== 'ended' && (
-            <Link
-              to={`/auctions/${auction.id}/audit`}
-              className="inline-flex min-h-11 items-center text-sm font-semibold text-info underline-offset-4 hover:underline"
-            >
-              Consultar auditoria do lote
-            </Link>
+            <p role="status">
+              {privateFailure
+                ? 'Não foi possível carregar sua posição e saldo.'
+                : 'Carregando sua posição e saldo…'}
+            </p>
           )}
         </aside>
-        <div className="space-y-6 lg:col-span-7 lg:col-start-1 lg:row-start-2">
-          <dl className="grid grid-cols-2 gap-x-5 gap-y-5 border-b border-border pb-6">
-            {[
-              ['Tipo', auction.card.types.join(', ')],
-              ['Raridade', auction.card.rarity],
-              ['Ilustrador', auction.card.illustrator],
-              ['Pontos de vida', String(auction.card.hp)],
-              ['Origem', 'Catálogo TCGdex'],
-              ['Leiloeiro', auction.seller],
-            ].map(([label, value]) => (
-              <div key={label}>
-                <dt className="text-sm text-muted-foreground">{label}</dt>
-                <dd className="mt-1 break-words font-medium">{value}</dd>
-              </div>
-            ))}
+        <div className="space-y-6 lg:col-span-7">
+          <dl className="grid grid-cols-2 gap-5 border-b border-border pb-6">
+            {attributes
+              .filter(([, value]) => value !== undefined && value !== '')
+              .map(([label, value]) => (
+                <div key={label}>
+                  <dt className="text-sm text-muted-foreground">{label}</dt>
+                  <dd className="mt-1 break-words font-medium">{value}</dd>
+                </div>
+              ))}
           </dl>
-          <p className="text-sm leading-relaxed text-muted-foreground">
-            A imagem e os atributos identificam a carta no catálogo. Esta demonstração não
-            representa uma oferta de carta física nem uma avaliação de conservação.
-          </p>
+          {auction.description && <p>{auction.description}</p>}
         </div>
       </div>
-
       <div className="grid gap-8 border-t border-border pt-8 lg:grid-cols-12 lg:gap-10">
         <div className="lg:col-span-7">
           <BidHistory
-            key={auction.id}
-            bids={auctionBids}
-            showMine={isBidder}
-            acceptsBids={auction.status === 'live'}
+            auctionId={id}
+            myPseudonym={isBidder ? position.data?.myPseudonym : undefined}
           />
         </div>
-        <section aria-labelledby="auction-rules-heading" className="space-y-4 lg:col-span-5">
+        <section className="space-y-4 lg:col-span-5" aria-labelledby="auction-rules-heading">
           <h2 id="auction-rules-heading" className="font-display text-3xl font-semibold">
             Como este lote funciona
           </h2>
           <dl className="space-y-4 text-sm">
-            <div className="flex justify-between gap-4 border-b border-border pb-4">
-              <dt className="text-muted-foreground">Incremento mínimo</dt>
-              <dd className="font-semibold tabular-nums">{formatMoney(auction.incrementCents)}</dd>
+            <div className="flex justify-between gap-4 border-b pb-4">
+              <dt>Incremento mínimo</dt>
+              <dd>{formatMoney(auction.minimumIncrementCents)}</dd>
             </div>
-            <div className="flex justify-between gap-4 border-b border-border pb-4">
-              <dt className="text-muted-foreground">Lance inicial</dt>
-              <dd className="font-semibold tabular-nums">
-                {formatMoney(auction.startingBidCents)}
-              </dd>
+            <div className="flex justify-between gap-4 border-b pb-4">
+              <dt>Lance inicial</dt>
+              <dd>{formatMoney(auction.startingPriceCents)}</dd>
             </div>
           </dl>
-          <p className="text-sm leading-relaxed text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             Somente o maior lance mantém saldo reservado. O resultado é confirmado após o
             encerramento e a liquidação.
           </p>
-          <p className="text-sm leading-relaxed text-muted-foreground">
-            Lances próximos do encerramento podem estender o prazo. Confira sempre o horário final
-            exibido na sala.
+          <p className="text-sm text-muted-foreground">
+            Lances aceitos nos últimos 2 minutos levam o encerramento para 2 minutos após o lance.
+            Confira o prazo atualizado na sala.
           </p>
         </section>
       </div>
-      <details className="border-t border-border pt-5 text-sm text-muted-foreground">
-        <summary className="w-fit cursor-pointer py-2">Visualizar estados da demonstração</summary>
-        <div className="mt-3 max-w-xs space-y-2">
-          <label htmlFor="room-update-preview">Atualização da sala</label>
-          <NativeSelect
-            id="room-update-preview"
-            value={updateState}
-            onChange={(event) => setUpdateState(event.target.value as UpdateState)}
-          >
-            <option value="ready">Dados disponíveis</option>
-            <option value="reconnecting">Reconectando</option>
-            <option value="offline">Sem conexão</option>
-          </NativeSelect>
-        </div>
-      </details>
     </section>
   );
 }

@@ -14,10 +14,17 @@ imagens também estão disponíveis; as rotas estão descritas abaixo.
 Publicação, vitrine e cancelamento de lotes sem lances estão implementados.
 Lances, liquidação, comprovantes, auditoria pública, painéis, Socket.IO e
 demonstração persistente estão implementados. O frontend React/Vite possui todas
-as views visuais, autenticação, vitrine pública e publicação de leilões integradas. Abas e paginação
+as views visuais, autenticação, vitrine pública, publicação, painel do leiloeiro e sala de lances integrados. Abas e paginação
 consultam a API; início/fim são reconciliados a cada 15 segundos e ao retomar o foco.
-O detalhe de lotes reais é somente leitura até a integração de lances (FE-08).
-Carteira, painéis, participações e auditoria ainda exibem dados de demonstração.
+A sala envia lances HTTP, atualiza histórico/posição/saldo a cada 5 segundos e usa
+horário do servidor com tempo monotônico para o contador. Só anuncia arremate após
+liquidação e verificação confirmadas. Operações incertas preservam chave e valor
+por conta/lote/aba no sessionStorage; uma repetição consulta a mesma solicitação.
+O painel usa totais globais do servidor e cancela lotes sem lances, preservando histórico.
+Carteira (depósitos), participações, comprovantes e auditoria ainda exibem dados de
+demonstração. O saldo exibido na sala já é real; depósitos para estes testes são
+feitos pela API. Socket.IO no frontend será integrado na FE-09. A navegação da
+sala para a auditoria/comprovante aguarda as respectivas views integradas.
 
 Requisitos
 ----------

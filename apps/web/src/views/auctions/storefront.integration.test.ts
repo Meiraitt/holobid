@@ -13,6 +13,8 @@ import { ApiClient } from '../../services/api-client';
 import { authService } from '../../services/auth-service';
 import { createOperation } from '../../services/operations';
 import { resourceServices } from '../../services/resource-services';
+import { bidAttempt } from '../auction-room/bid-attempt';
+import { historyOptions, myBidOptions, roomOptions } from '../auction-room/room-queries';
 import { PublicationAttempt } from '../create-auction/publication';
 import { auctioneerSummaryOptions, ownedAuctionsOptions } from '../my-auctions/auctioneer-queries';
 
@@ -28,6 +30,7 @@ const cache = createQueryClient();
 const nativeFetch = globalThis.fetch;
 const requests: number[] = [];
 let losePublicationResponse = false;
+let loseBidResponse = false;
 const control = process.env.HOLOBID_HTTP_CONTROL!;
 let token = '';
 let now = 0;
@@ -63,6 +66,16 @@ beforeAll(async () => {
       throw new TypeError('Test: response lost after server commit');
     }
 
+    if (
+      loseBidResponse &&
+      new URL(url).pathname.endsWith('/bids') &&
+      options.method === 'POST' &&
+      response.ok
+    ) {
+      loseBidResponse = false;
+      throw new TypeError('Test: bid response lost after server commit');
+    }
+
     return response;
   });
 
@@ -78,7 +91,7 @@ afterAll(async () => {
   cache.clear();
   await sql.end();
   process.stdout.write(
-    `Storefront/publication: ${requests.length} real HTTP requests to NestJS/PostgreSQL.\n`,
+    `Frontend auctions: ${requests.length} real HTTP requests to NestJS/PostgreSQL.\n`,
   );
 });
 
@@ -487,6 +500,277 @@ describe('auctioneer management over real HTTP', () => {
     token = otherToken;
     expect((await api.account.summary()).totalReceivedCents).toBe(0);
     token = sellerToken;
+    configure({ reconcileSettlements: false });
+  });
+});
+
+describe('auction room and bidding over real HTTP', () => {
+  const roomLots: AuctionDetail[] = [];
+  const people: Record<string, { id: string; api: ReturnType<typeof resourceServices> }> = {};
+  const saved = new Map<string, string>();
+  const store = {
+    getItem: (key: string) => saved.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      saved.set(key, value);
+    },
+    removeItem: (key: string) => {
+      saved.delete(key);
+    },
+    clear: () => saved.clear(),
+    key: () => null,
+    length: 0,
+  };
+  const participant = (name: string) => people[name]!;
+  const lot = () => roomLots[0]!;
+  const submit = (name: string, amountCents: number, id = lot().id) =>
+    participant(name).api.auctions.bid(id, createOperation({ amountCents }));
+  const attempt = (name: string) =>
+    bidAttempt(participant(name).api.auctions.bid, store, participant(name).id, lot().id);
+  const bidCount = async () =>
+    (await sql.query('SELECT count(*)::int AS n FROM "Bid" WHERE "auctionId"=$1', [lot().id]))
+      .rows[0].n;
+
+  beforeAll(async () => {
+    now = JSON.parse(readFileSync(control, 'utf8')).now;
+    for (const name of ['seller', 'a', 'b', 'empty']) {
+      const credentials = {
+        email: `room-${name}-${randomUUID()}@holobid.test`,
+        password: 'Auction-room-2026!',
+      };
+      const registered = await auth.register(credentials);
+      let accessToken = registered.accessToken;
+
+      if (name === 'seller') {
+        await sql.query(`UPDATE "User" SET role='AUCTIONEER' WHERE id=$1`, [registered.user.id]);
+        accessToken = (await auth.login(credentials)).accessToken;
+      }
+
+      const ownClient = new ApiClient(origin);
+
+      ownClient.bindSession({
+        token: () => accessToken,
+        scope: () => 1,
+        refresh: async () => null,
+      });
+      people[name] = { id: registered.user.id, api: resourceServices(ownClient) };
+    }
+
+    for (let index = 0; index < 5; index++) {
+      const result = await participant('seller').api.auctions.create(
+        createOperation({
+          externalItemId: 'base1-58',
+          startingPriceCents: 1000,
+          minimumIncrementCents: 100,
+          startsAt: new Date(now + (index === 1 ? 60000 : -1000)).toISOString(),
+          endsAt: new Date(now + (index === 2 ? 30000 : 600000)).toISOString(),
+        }),
+      );
+
+      roomLots.push(result.data as AuctionDetail);
+    }
+
+    await participant('seller').api.auctions.cancel(roomLots[3]!.id, createOperation({}));
+    await participant('a').api.wallet.deposit(createOperation({ amountCents: 10000 }));
+    await participant('b').api.wallet.deposit(createOperation({ amountCents: 10000 }));
+  });
+
+  it('loads the public room and history but restricts bids/private position by role', async () => {
+    expect(
+      (await cache.fetchQuery(roomOptions(lot().id, anonymous.auctions))).auction.canReceiveBids,
+    ).toBe(true);
+    expect((await anonymous.auctions.bids(lot().id)).items).toEqual([]);
+    await expect(
+      anonymous.auctions.bid(lot().id, createOperation({ amountCents: 1000 })),
+    ).rejects.toMatchObject({ status: 401 });
+    await expect(submit('seller', 1000)).rejects.toMatchObject({ status: 403 });
+    await expect(anonymous.auctions.mine(lot().id)).rejects.toMatchObject({ status: 401 });
+    expect(
+      (
+        await cache.fetchQuery(
+          myBidOptions(participant('a').id, lot().id, participant('a').api.auctions),
+        )
+      ).state,
+    ).toBe('NOT_PARTICIPATING');
+  });
+  it('rejects invalid cents, below minimum, insufficient funds and unavailable lots without writing', async () => {
+    for (const amount of [0, -1, 10.5, 100000000001]) {
+      await expect(submit('a', amount)).rejects.toMatchObject({ status: 400 });
+    }
+
+    await expect(submit('a', 999)).rejects.toMatchObject({
+      status: 409,
+      problem: { code: 'BID_BELOW_MINIMUM' },
+    });
+    await expect(submit('empty', 1000)).rejects.toMatchObject({
+      status: 422,
+      problem: { code: 'INSUFFICIENT_FUNDS' },
+    });
+    await expect(submit('a', 1000, roomLots[1]!.id)).rejects.toMatchObject({
+      status: 409,
+      problem: { code: 'AUCTION_NOT_STARTED' },
+    });
+    await expect(submit('a', 1000, roomLots[3]!.id)).rejects.toMatchObject({
+      status: 409,
+      problem: { code: 'AUCTION_CANCELLED' },
+    });
+    await expect(submit('a', 1000, randomUUID())).rejects.toMatchObject({ status: 404 });
+    expect(await bidCount()).toBe(0);
+    expect((await participant('a').api.wallet.get()).reservedCents).toBe(0);
+  });
+  it('submits a double click once, reserves funds and prevents the leader from bidding again', async () => {
+    const current = attempt('a');
+    const first = current.submit({ amountCents: 1000 });
+
+    expect(current.submit({ amountCents: 9999 })).toBe(first);
+    expect((await first).data.confirmation).toBe('CONFIRMED');
+    expect(await bidCount()).toBe(1);
+    expect(await participant('a').api.auctions.mine(lot().id)).toMatchObject({
+      state: 'LEADING',
+      rank: 1,
+      reservedForThisAuctionCents: 1000,
+    });
+    expect(await participant('a').api.wallet.get()).toMatchObject({
+      totalCents: 10000,
+      availableCents: 9000,
+    });
+    await expect(submit('a', 1100)).rejects.toMatchObject({
+      status: 409,
+      problem: { code: 'ALREADY_LEADING' },
+    });
+  });
+  it('updates minimum/rank and releases the surpassed bidder, with only pseudonyms in paged history', async () => {
+    await submit('b', 1100);
+    expect(await participant('a').api.auctions.mine(lot().id)).toMatchObject({
+      state: 'OUTBID',
+      rank: 2,
+      reservedForThisAuctionCents: 0,
+    });
+    expect((await participant('a').api.wallet.get()).availableCents).toBe(10000);
+    await expect(submit('a', 1100)).rejects.toMatchObject({
+      status: 409,
+      problem: { code: 'BID_BELOW_MINIMUM' },
+    });
+    expect((await anonymous.auctions.detail(lot().id)).minimumNextBidCents).toBe(1200);
+
+    const observer = new InfiniteQueryObserver(
+      cache,
+      historyOptions(lot().id, anonymous.auctions, 1),
+    );
+
+    await observer.refetch();
+    expect(observer.getCurrentResult().hasNextPage).toBe(true);
+    await observer.fetchNextPage();
+
+    const bids = observer.getCurrentResult().data!.pages.flatMap((page) => page.items);
+
+    expect(bids).toHaveLength(2);
+    expect(new Set(bids.map((bid) => bid.id)).size).toBe(2);
+    for (const bid of bids) {
+      expect(Object.keys(bid).sort()).toEqual([
+        'acceptedAt',
+        'amountCents',
+        'bidderPseudonym',
+        'id',
+        'sequence',
+      ]);
+      expect(bid.bidderPseudonym).not.toContain('@');
+    }
+
+    observer.destroy();
+  });
+  it('recovers a committed bid after response loss without duplicating or overwriting newer balances', async () => {
+    loseBidResponse = true;
+    await expect(attempt('a').submit({ amountCents: 1200 })).rejects.toMatchObject({
+      kind: 'network',
+    });
+    expect(await bidCount()).toBe(3);
+    await submit('b', 1300);
+
+    const restored = attempt('a');
+    const replay = await restored.submit();
+
+    expect(replay.data.confirmation).toBe('CONFIRMED');
+    expect(await bidCount()).toBe(4);
+    expect(restored.operation).toBeUndefined();
+    expect((await participant('a').api.auctions.mine(lot().id)).state).toBe('OUTBID');
+    expect((await participant('a').api.wallet.get()).availableCents).toBe(10000);
+    expect(
+      (await cache.fetchQuery({ ...roomOptions(lot().id, anonymous.auctions), staleTime: 0 }))
+        .auction.currentBidCents,
+    ).toBe(1300);
+  });
+  it('recovers a genuine 202 after reload with the same key and exactly one financial reservation', async () => {
+    configure({ pendingPublication: true });
+
+    const pending = await attempt('a').submit({ amountCents: 1400 });
+
+    expect(pending.status).toBe(202);
+    expect(pending.data.confirmation).toBe('PENDING');
+    expect(attempt('a').operation).toBeDefined();
+    configure({ pendingPublication: false });
+    expect((await attempt('a').submit()).data.confirmation).toBe('CONFIRMED');
+    expect(await bidCount()).toBe(5);
+    expect(await participant('a').api.wallet.get()).toMatchObject({
+      reservedCents: 1400,
+      availableCents: 8600,
+    });
+  });
+  it('uses server boundaries and refetches an anti-sniping extension rather than trusting the device clock', async () => {
+    configure({ now: now + 60000 });
+    expect((await anonymous.auctions.detail(roomLots[1]!.id)).status).toBe('LIVE');
+    await submit('b', 1000, roomLots[1]!.id);
+    await expect(submit('b', 1000, roomLots[2]!.id)).rejects.toMatchObject({
+      status: 409,
+      problem: { code: 'AUCTION_ENDED' },
+    });
+    configure({ now: now + 590000 });
+    await submit('b', 1500);
+
+    const snapshot = await cache.fetchQuery({
+      ...roomOptions(lot().id, anonymous.auctions),
+      staleTime: 0,
+    });
+
+    expect(snapshot.auction.endsAt).toBe(new Date(now + 710000).toISOString());
+    expect(snapshot.auction.endsAt).not.toBe(lot().endsAt);
+    expect(snapshot.auction.status).toBe('LIVE');
+    expect(snapshot.auction.outcome).toBeUndefined();
+    configure({ now: now + 710000 });
+    await expect(submit('empty', 1600)).rejects.toMatchObject({
+      status: 409,
+      problem: { code: 'AUCTION_ENDED' },
+    });
+  });
+  it('obtains confirmed winner/loser, receipt and balances only after actual settlement', async () => {
+    configure({ reconcileSettlements: true });
+    await vi.waitFor(
+      async () => {
+        expect((await anonymous.auctions.detail(lot().id)).settlementStatus).toBe('COMPLETED');
+      },
+      { timeout: 5000, interval: 200 },
+    );
+    expect(await participant('a').api.auctions.mine(lot().id)).toMatchObject({
+      state: 'LOST',
+      reservedForThisAuctionCents: 0,
+    });
+    expect(await participant('b').api.auctions.mine(lot().id)).toMatchObject({
+      state: 'WON',
+      reservedForThisAuctionCents: 0,
+      receiptCode: expect.any(String),
+    });
+    expect((await anonymous.auctions.detail(lot().id)).outcome).toMatchObject({
+      kind: 'SOLD',
+      amountCents: 1500,
+    });
+    expect((await anonymous.auctions.detail(roomLots[4]!.id)).outcome?.kind).toBe('NO_BIDS');
+    expect(await participant('a').api.wallet.get()).toMatchObject({
+      totalCents: 10000,
+      reservedCents: 0,
+    });
+    expect(await participant('b').api.wallet.get()).toMatchObject({
+      totalCents: 7500,
+      reservedCents: 0,
+    });
     configure({ reconcileSettlements: false });
   });
 });
