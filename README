@@ -14,8 +14,10 @@ imagens também estão disponíveis; as rotas estão descritas abaixo.
 Publicação, vitrine e cancelamento de lotes sem lances estão implementados.
 Lances, liquidação, comprovantes, auditoria pública, painéis, Socket.IO e
 demonstração persistente estão implementados. O frontend React/Vite possui todas
-as views visuais e autenticação integrada. Leilões, carteira, participações e
-auditoria ainda exibem dados de demonstração; a faixa superior informa esse limite.
+as views visuais, autenticação e vitrine pública integradas. Abas e paginação
+consultam a API; início/fim são reconciliados a cada 15 segundos e ao retomar o foco.
+O detalhe de lotes reais é somente leitura até a integração de lances (FE-08).
+Carteira, painéis, participações e auditoria ainda exibem dados de demonstração.
 
 Requisitos
 ----------
@@ -819,3 +821,12 @@ executando os services/controlador de sessão do frontend por HTTP. Não lê
 URLs externas nem usa o Neon. Faz parte de npm run check, inclusive no
 Docker/Northflank e no GitHub Actions. Docker é o padrão local; o modo
 HOLOBID_TEST_DATABASE_MODE=process requer PostgreSQL 16 no PATH.
+
+Integração da vitrine
+--------------------
+    npm run test:auctions
+
+Executa os serviços HTTP e as opções de paginação do frontend contra NestJS
+compilado e PostgreSQL descartável. O upstream TCGdex é controlado apenas no
+processo de teste para reproduzir estados, cancelamento e indisponibilidade.
+Incluído em npm run check e, portanto, no estágio checks do Docker/Northflank.

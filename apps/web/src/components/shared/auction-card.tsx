@@ -15,7 +15,14 @@ const statuses = {
   cancelled: 'Cancelado',
 };
 
-export function AuctionCard({ auction }: { auction: DemoAuction }) {
+export function AuctionCard({
+  auction,
+}: {
+  auction: Pick<
+    DemoAuction,
+    'id' | 'status' | 'bidCount' | 'currentBidCents' | 'startsAt' | 'endsAt'
+  > & { card: Pick<DemoAuction['card'], 'image' | 'name' | 'edition' | 'number'> };
+}) {
   return (
     <article className="group min-w-0">
       <Link
@@ -50,10 +57,10 @@ export function AuctionCard({ auction }: { auction: DemoAuction }) {
         <div className="mt-4 flex items-end justify-between gap-2">
           <div>
             <p className="text-sm text-muted-foreground">
-              {auction.status === 'ended'
-                ? 'Lance final'
-                : auction.bidCount === 0
-                  ? 'Lance inicial'
+              {auction.bidCount === 0
+                ? 'Lance inicial'
+                : auction.status === 'ended'
+                  ? 'Lance final'
                   : 'Lance atual'}
             </p>
             <Money cents={auction.currentBidCents} className="text-xl font-semibold" />

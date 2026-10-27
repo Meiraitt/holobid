@@ -18,7 +18,8 @@
     "db:seed": "node dist/cli/demo-seed.js",
     "test:http": "node scripts/test-database.mjs --http",
     "test:http:live": "node scripts/test-database.mjs --http-live",
-    "test:auth": "node scripts/test-database.mjs --auth"
+    "test:auth": "node scripts/test-database.mjs --auth",
+    "test:auctions": "node scripts/test-database.mjs --web-auctions"
   },
   "dependencies": {
     "@holobid/contracts": "0.0.0",
