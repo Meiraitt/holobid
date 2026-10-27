@@ -658,8 +658,29 @@ O estágio final runtime contém dist, dependências de produção e fixtures;
 executa como usuário node, sem TypeScript, Prisma CLI, testes ou arquivos .env.
 A imagem suporta filesystem somente leitura e encerra pelo SIGTERM do Node.
 
+    npm run check:container
     docker build -f apps/api/Dockerfile -t holobid-api .
     docker build -f apps/api/Dockerfile --target migrations -t holobid-migrations .
+
+CI do Northflank versionado em apps/api/Dockerfile, estágio checks:
+  - Executa npm run check: lint, tipos, builds, testes unitários, PostgreSQL
+    e aceitação HTTP/cURL com Socket.IO, usando a mesma sequência do GitHub.
+  - Usa PostgreSQL 16 temporário dentro do build, sem Docker-in-Docker,
+    addons, jobs extras ou acesso ao Neon. São dois processos isolados em
+    loopback, com diretórios novos, removidos inclusive quando o teste falha.
+  - HOLOBID_TEST_DATABASE_MODE=process seleciona esse modo apenas no estágio
+    checks. Localmente e no GitHub, o runner continua usando Docker.
+  - A imagem runtime depende do sucesso de checks; falhas interrompem o build.
+    PostgreSQL, ferramentas de teste e dados temporários não entram no runtime.
+  - O catálogo externo é simulado nos checks, para o CI ser determinístico.
+    O smoke público com TCGdex real permanece uma validação explícita de release.
+  - O cache pode reutilizar um resultado aprovado quando os arquivos de entrada
+    forem idênticos. Mudanças em código, testes ou configuração invalidam a etapa.
+
+No painel Northflank, manter source main, CI ligado e target runtime. O gatilho
+é do serviço existente; a sequência e a condição de sucesso estão no Dockerfile.
+CD permanece manual para aplicar migrations antes de promover uma nova imagem.
+Não criar outro serviço nem fazer upgrade: o build usa a cota gratuita existente.
 
 Crie um arquivo de ambiente fora do contexto de build, com permissão 0600,
 seguindo apps/api/.env.example. Use os dois bancos Neon, suas URLs diretas
