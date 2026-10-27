@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pt-BR" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#102630" />
+    <meta
+      name="description"
+      content="HoloBid: uma casa de leilões de cartas Pokémon. Demonstração visual com saldo simulado."
+    />
+    <title>HoloBid — Leilões de cartas Pokémon</title>
+    <script>
+      try {
+        const theme = localStorage.getItem('holobid-theme') || 'system';
+        const dark =
+          theme === 'dark' ||
+          (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.classList.toggle('dark', dark);
+      } catch {
+        /* A blocked storage must not prevent rendering. */
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

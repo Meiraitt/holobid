@@ -13,7 +13,7 @@
   },
   "packageManager": "npm@11.21.1",
   "scripts": {
-    "check": "npm run format:check && npm run lint && npm run typecheck && npm run build && npm run test:api && npm run test:db && npm run test:http",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run build && npm run test:web && npm run test:api && npm run test:db && npm run test:http",
     "check:container": "docker build --progress=plain --target checks -f apps/api/Dockerfile .",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "npm run build --workspace=@holobid/contracts && npm run typecheck --workspaces",
@@ -36,7 +36,9 @@
     "test:deploy": "node apps/api/scripts/deploy-smoke.mjs",
     "format": "npm run lint:fix && prettier --write .",
     "format:check": "prettier --check .",
-    "lint:fix": "eslint . --fix --max-warnings=0"
+    "lint:fix": "eslint . --fix --max-warnings=0",
+    "dev:web": "npm run dev --workspace=@holobid/web",
+    "test:web": "npm run test --workspace=@holobid/web"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
