@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { AppLayout } from './components/layout/app-layout';
 import { AuctionRoomView } from './views/auction-room/AuctionRoomView';
 import { AuctionsView } from './views/auctions/AuctionsView';
+import { AuditView } from './views/audit/AuditView';
 import { CreateAuctionView } from './views/create-auction/CreateAuctionView';
 import { DesignSystemView } from './views/design-system/DesignSystemView';
 import { LoginView } from './views/login/LoginView';
@@ -26,6 +27,7 @@ export function App() {
         <Route path="/participations" element={<ParticipationsView />} />
         <Route path="/my-auctions" element={<MyAuctionsView />} />
         <Route path="/auctions/new" element={<CreateAuctionView />} />
+        <Route path="/auctions/:auctionId/audit" element={<AuditView />} />
         <Route path="*" element={<NotFoundView />} />
       </Route>
     </Routes>
