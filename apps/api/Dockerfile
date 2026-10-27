@@ -29,7 +29,7 @@ COPY --from=build --chown=postgres:postgres /app/ ./
 COPY --chown=postgres:postgres . .
 USER postgres
 ENV HOLOBID_TEST_DATABASE_MODE=process
-RUN npm run check && touch /app/.checks-passed
+RUN npm run check && touch /tmp/.checks-passed
 
 # Explicit release step. Never run migrations while building or starting the API.
 FROM build AS migrations
@@ -39,7 +39,7 @@ CMD ["npm", "run", "db:release"]
 
 FROM build AS production-dependencies
 # This dependency makes the checks mandatory when building the runtime target.
-COPY --from=checks /app/.checks-passed /tmp/.checks-passed
+COPY --from=checks /tmp/.checks-passed /tmp/.checks-passed
 RUN npm prune --omit=dev --omit=optional --omit=peer --ignore-scripts
 
 FROM base AS runtime
