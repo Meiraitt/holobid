@@ -778,7 +778,8 @@ not stored. Only the visual theme preference is saved. No request is sent to the
 After the view PRs are merged, routes include: /auctions, /auctions/:auctionId, /login, /register, /wallet, /participations,
 /my-auctions, /auctions/new, /auctions/:auctionId/audit, /receipts/:receiptId and /design-system.
 The design system documents actual reusable buttons, fields, cards, dialogs, notifications
-and status components in light/dark/system modes. App only composes routed views.
+and status components in light/dark modes. A sun/moon button toggles the saved theme; dark is the default.
+App only composes routed views.
 The static demo includes successful, empty, pending and failed states. Audit hashes are
 illustrative; real authentication, HTTP, Socket.IO and server verification remain separate
 integration work. The visual demo must not be presented as the completed technical test.
