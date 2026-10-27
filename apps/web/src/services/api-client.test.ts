@@ -50,6 +50,33 @@ afterAll(async () => {
 });
 
 describe('HTTP transport over a real TCP server', () => {
+  it.each([200, 401])(
+    'discards a %i response from a previous account without retrying as the new user',
+    async (status) => {
+      let scope = 1;
+      let renewals = 0;
+
+      client.bindSession({
+        token: () => 'old-account',
+        scope: () => scope,
+        refresh: async () => {
+          renewals++;
+
+          return 'new-account';
+        },
+      });
+      handler = (_request, response) => {
+        scope++;
+        json(response, status, {});
+      };
+
+      await expect(client.request('/wallet', { authenticated: true })).rejects.toMatchObject({
+        kind: 'aborted',
+      });
+      expect(renewals).toBe(0);
+      expect(records).toHaveLength(1);
+    },
+  );
   it('normalizes the API prefix and rejects external request paths', async () => {
     expect(apiOrigin(`${origin}/api/v1/`)).toBe(origin);
     expect(() => apiOrigin(`${origin}/other`)).toThrow();

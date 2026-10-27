@@ -46,7 +46,7 @@ function AuctionResult({ auction }: { auction: DemoAuction }) {
 }
 
 export function MyAuctionsView() {
-  const { auctions, user, login, cancelAuction } = useDemo();
+  const { auctions, user, cancelAuction } = useDemo();
   const [filter, setFilter] = useState<AuctionStatus | 'all'>('all');
   const [cancelId, setCancelId] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState('');
@@ -89,8 +89,12 @@ export function MyAuctionsView() {
         />
         <EmptyState
           title="Área do leiloeiro"
-          description="Troque para a conta de leiloeiro da demonstração para criar e gerenciar lotes."
-          action={<Button onClick={() => login('auctioneer')}>Usar conta de leiloeiro</Button>}
+          description="Entre com uma conta de leiloeiro para criar e gerenciar lotes."
+          action={
+            <Link to="/login" className="text-link">
+              Entrar na minha conta
+            </Link>
+          }
         />
       </section>
     );

@@ -6,7 +6,7 @@ import { EmptyState } from '../../components/shared/empty-state';
 import { Money } from '../../components/shared/money';
 import { PageHeader } from '../../components/shared/page-header';
 import { StatusBadge } from '../../components/shared/status-badge';
-import { Button, buttonVariants } from '../../components/ui/button';
+import { buttonVariants } from '../../components/ui/button';
 import { useDemo } from '../../demo/demo-provider';
 import type { DemoAuction, ParticipationStatus } from '../../demo/types';
 import { formatDate } from '../../lib/format';
@@ -70,7 +70,7 @@ function ParticipationOutcome({ auction }: { auction: DemoAuction }) {
 }
 
 export function ParticipationsView() {
-  const { auctions, user, login } = useDemo();
+  const { auctions, user } = useDemo();
   const [filter, setFilter] = useState<ParticipationFilter>('active');
   const participations = auctions.filter((auction) => Boolean(auction.participation));
   const wins = participations.filter(
@@ -94,8 +94,12 @@ export function ParticipationsView() {
         />
         <EmptyState
           title={user ? 'Área do licitante' : 'Entre para acompanhar seus lances'}
-          description="Use a conta de licitante da demonstração para ver suas participações."
-          action={<Button onClick={() => login('bidder')}>Usar conta de licitante</Button>}
+          description="Entre com uma conta de licitante para acompanhar suas participações."
+          action={
+            <Link to="/login" className="text-link">
+              Entrar na minha conta
+            </Link>
+          }
         />
       </section>
     );
