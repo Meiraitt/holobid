@@ -30,7 +30,9 @@
     "audit:verify": "npm run audit:verify --workspace=@holobid/api --",
     "audit:tamper-demo": "npm run audit:tamper-demo --workspace=@holobid/api --",
     "db:seed": "npm run build:api && npm run db:seed --workspace=@holobid/api",
-    "test:http": "npm run build:api && npm run test:http --workspace=@holobid/api"
+    "test:http": "npm run build:api && npm run test:http --workspace=@holobid/api",
+    "db:release": "npm run db:audit:migrate && npm run db:migrate",
+    "test:deploy": "node apps/api/scripts/deploy-smoke.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
