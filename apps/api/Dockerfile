@@ -17,6 +17,20 @@ RUN npm ci
 COPY apps/api/src/ apps/api/src/
 RUN npm run build:api
 
+# Run the same quality gate as GitHub Actions without Docker-in-Docker or Neon.
+# PostgreSQL and test dependencies exist only in this disposable build stage.
+FROM postgres:16-bookworm@sha256:d81f7b51697014367236d07ec58b54153fc28f828b72bf247fe5c7487520bcb0 AS checks
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl libstdc++6 \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=build /usr/local/ /usr/local/
+WORKDIR /app
+COPY --from=build --chown=postgres:postgres /app/ ./
+COPY --chown=postgres:postgres . .
+USER postgres
+ENV HOLOBID_TEST_DATABASE_MODE=process
+RUN npm run check && touch /app/.checks-passed
+
 # Explicit release step. Never run migrations while building or starting the API.
 FROM build AS migrations
 ENV NODE_ENV=production
@@ -24,6 +38,8 @@ USER node
 CMD ["npm", "run", "db:release"]
 
 FROM build AS production-dependencies
+# This dependency makes the checks mandatory when building the runtime target.
+COPY --from=checks /app/.checks-passed /tmp/.checks-passed
 RUN npm prune --omit=dev --omit=optional --omit=peer --ignore-scripts
 
 FROM base AS runtime

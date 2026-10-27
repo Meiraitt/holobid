@@ -14,6 +14,7 @@
   "packageManager": "npm@11.21.1",
   "scripts": {
     "check": "npm run lint && npm run typecheck && npm run build && npm run test:api && npm run test:db && npm run test:http",
+    "check:container": "docker build --progress=plain --target checks -f apps/api/Dockerfile .",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "npm run build --workspace=@holobid/contracts && npm run typecheck --workspaces",
     "build": "npm run build --workspaces",

@@ -21,6 +21,3 @@ outputs
 .github
 .vscode
 .idea
-apps/api/test
-apps/api/scripts
-apps/web/src
