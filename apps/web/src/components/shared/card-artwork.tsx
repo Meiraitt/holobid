@@ -1,0 +1,62 @@
+import { ImageOff, Maximize2 } from 'lucide-react';
+import { useState } from 'react';
+
+import { cn } from '../../lib/utils';
+import { Button } from '../ui/button';
+import { Modal } from '../ui/dialog';
+
+export function CardArtwork({
+  src,
+  alt,
+  className,
+  zoom = false,
+}: {
+  src: string;
+  alt: string;
+  className?: string;
+  zoom?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  return (
+    <div
+      className={cn(
+        'relative flex min-h-64 items-center justify-center rounded-md bg-muted p-6',
+        className,
+        zoom && 'pb-16',
+      )}
+    >
+      {failed ? (
+        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+          <ImageOff aria-hidden="true" />
+          <span>Imagem indisponível</span>
+        </div>
+      ) : (
+        <img
+          src={src}
+          alt={alt}
+          loading="lazy"
+          onError={() => setFailed(true)}
+          className="h-full max-h-full w-auto max-w-full object-contain drop-shadow-lg"
+        />
+      )}
+      {zoom && !failed && (
+        <>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="absolute bottom-2 right-2 bg-muted/90"
+            onClick={() => setOpen(true)}
+          >
+            <Maximize2 />
+            Ampliar imagem
+          </Button>
+          <Modal open={open} onOpenChange={setOpen} title={alt}>
+            <img src={src} alt={alt} className="mx-auto max-h-[65dvh] max-w-full object-contain" />
+          </Modal>
+        </>
+      )}
+    </div>
+  );
+}

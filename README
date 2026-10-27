@@ -766,3 +766,23 @@ Running e health/ready 200, então crie /caminho/novo-gate.continue. O runner
 confirma saldos, sessões, recibo, auditoria e WebSocket após o restart, por
 até oito minutos. O relatório omite senhas, cookies e tokens. Sem essa flag,
 o relatório indica explicitamente que restart não foi validado.
+
+Frontend visual preview
+
+Run npm ci and npm run dev:web, then open http://localhost:5173.
+The React/Vite application uses Tailwind and locally customized shadcn/Base UI components.
+Use the header to choose a bidder, auctioneer or visitor demo profile. Every interaction is
+local to the current tab: reloading restores the examples. Passwords and account data are
+not stored. Only the visual theme preference is saved. No request is sent to the API.
+
+After the view PRs are merged, routes include: /auctions, /auctions/:auctionId, /login, /register, /wallet, /participations,
+/my-auctions, /auctions/new, /auctions/:auctionId/audit, /receipts/:receiptId and /design-system.
+The design system documents actual reusable buttons, fields, cards, dialogs, notifications
+and status components in light/dark/system modes. App only composes routed views.
+The static demo includes successful, empty, pending and failed states. Audit hashes are
+illustrative; real authentication, HTTP, Socket.IO and server verification remain separate
+integration work. The visual demo must not be presented as the completed technical test.
+
+Frontend checks: npm run test:web, npm run build:web, npm run typecheck and npm run lint.
+The six focused frontend tests validate monetary parsing, demo reservations, bid rules,
+permission checks and deadline extension. npm run check also includes these tests.
