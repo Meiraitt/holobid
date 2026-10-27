@@ -15,6 +15,13 @@ export class ApiRequestError extends Error {
 }
 
 const messages: Record<string, string> = {
+  CATALOG_UNAVAILABLE:
+    'O catálogo está temporariamente indisponível. Tente novamente em instantes.',
+  ITEM_NOT_FOUND: 'Esta carta não está mais disponível no catálogo. Escolha outra carta.',
+  AUDIT_UNAVAILABLE:
+    'Não foi possível confirmar a publicação agora. Consulte novamente em instantes.',
+  AUDIT_PENDING: 'A confirmação ainda está em andamento. Consulte novamente em instantes.',
+
   INVALID_CREDENTIALS: 'E-mail ou senha incorretos. Confira os dados e tente novamente.',
   EMAIL_ALREADY_EXISTS: 'Este e-mail já está em uso. Entre na sua conta ou use outro e-mail.',
   SESSION_EXPIRED: 'Sua sessão expirou. Entre novamente para continuar.',
