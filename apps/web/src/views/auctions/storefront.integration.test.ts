@@ -14,6 +14,7 @@ import { authService } from '../../services/auth-service';
 import { createOperation } from '../../services/operations';
 import { resourceServices } from '../../services/resource-services';
 import { PublicationAttempt } from '../create-auction/publication';
+import { auctioneerSummaryOptions, ownedAuctionsOptions } from '../my-auctions/auctioneer-queries';
 
 import { auctionCardData, auctionListOptions } from './auction-queries';
 
@@ -329,5 +330,163 @@ describe('card search and publication over real HTTP', () => {
     } finally {
       token = sellerToken;
     }
+  });
+});
+
+describe('auctioneer management over real HTTP', () => {
+  let sellerId = '';
+  let sellerToken = '';
+  let bidderToken = '';
+  let otherToken = '';
+  const owned: AuctionDetail[] = [];
+
+  beforeAll(async () => {
+    now = JSON.parse(readFileSync(control, 'utf8')).now;
+    for (const role of ['owner', 'other', 'bidder']) {
+      const credentials = {
+        email: `${role}-${randomUUID()}@holobid.test`,
+        password: 'Management-2026!',
+      };
+      const registered = await auth.register(credentials);
+
+      if (role !== 'bidder') {
+        await sql.query(`UPDATE "User" SET role='AUCTIONEER' WHERE id=$1`, [registered.user.id]);
+      }
+
+      const session = await auth.login(credentials);
+
+      if (role === 'owner') {
+        sellerId = registered.user.id;
+        sellerToken = session.accessToken;
+      } else if (role === 'other') {
+        otherToken = session.accessToken;
+      } else {
+        bidderToken = session.accessToken;
+      }
+    }
+
+    token = sellerToken;
+    for (let i = 0; i < 3; i++) {
+      const result = await api.auctions.create(
+        createOperation({
+          externalItemId: 'base1-58',
+          startingPriceCents: 1000,
+          minimumIncrementCents: 100,
+          startsAt: new Date(now - 1000).toISOString(),
+          endsAt: new Date(now + 600000).toISOString(),
+        }),
+      );
+
+      owned.push(result.data as AuctionDetail);
+    }
+  });
+
+  it('paginates only the signed-in seller lots and gets server totals independently of pages', async () => {
+    const observer = new InfiniteQueryObserver(
+      cache,
+      ownedAuctionsOptions(sellerId, undefined, api.account, 2),
+    );
+
+    await observer.refetch();
+    expect(observer.getCurrentResult().data?.pages[0]?.items).toHaveLength(2);
+    await observer.fetchNextPage();
+    expect(
+      new Set(
+        observer
+          .getCurrentResult()
+          .data?.pages.flatMap((page) => page.items.map((item) => item.id)),
+      ),
+    ).toEqual(new Set(owned.map((item) => item.id)));
+    expect(
+      (await cache.fetchQuery(auctioneerSummaryOptions(sellerId, api.account))).totalReceivedCents,
+    ).toBe(0);
+    observer.destroy();
+  });
+  it('isolates another auctioneer and denies a bidder and a visitor', async () => {
+    token = otherToken;
+    expect((await api.account.auctions()).items).toEqual([]);
+    await expect(api.auctions.cancel(owned[0]!.id, createOperation({}))).rejects.toMatchObject({
+      status: 404,
+    });
+    token = bidderToken;
+    await expect(api.account.auctions()).rejects.toMatchObject({ status: 403 });
+    await expect(api.account.summary()).rejects.toMatchObject({ status: 403 });
+    await expect(api.auctions.cancel(owned[0]!.id, createOperation({}))).rejects.toMatchObject({
+      status: 403,
+    });
+    await expect(anonymous.account.auctions()).rejects.toMatchObject({ status: 401 });
+    token = sellerToken;
+  });
+  it('cancels once, replays the same request, preserves owner history and hides public details', async () => {
+    const operation = createOperation({});
+    const first = await api.auctions.cancel(owned[0]!.id, operation);
+    const replay = await api.auctions.cancel(owned[0]!.id, operation);
+
+    expect(first.data).toMatchObject({
+      status: 'CANCELLED',
+      canCancel: false,
+      cancelReason: 'AUCTION_CANCELLED',
+    });
+    expect(replay.data).toEqual(first.data);
+    expect(
+      (await api.account.auctions({ status: 'CANCELLED' })).items.map((item) => item.id),
+    ).toEqual([owned[0]!.id]);
+    await expect(anonymous.auctions.detail(owned[0]!.id)).rejects.toMatchObject({ status: 404 });
+  });
+  it('rejects cancellation when a real bid arrived after loading the dashboard', async () => {
+    expect(
+      (await api.account.auctions({ status: 'LIVE' })).items.find(
+        (item) => item.id === owned[1]!.id,
+      )?.canCancel,
+    ).toBe(true);
+    token = bidderToken;
+    await api.wallet.deposit(createOperation({ amountCents: 10000 }));
+    await api.auctions.bid(owned[1]!.id, createOperation({ amountCents: 1000 }));
+    token = sellerToken;
+    await expect(api.auctions.cancel(owned[1]!.id, createOperation({}))).rejects.toMatchObject({
+      status: 409,
+      problem: { code: 'AUCTION_HAS_BIDS' },
+    });
+    expect(
+      (await api.account.auctions({ status: 'LIVE' })).items.find(
+        (item) => item.id === owned[1]!.id,
+      ),
+    ).toMatchObject({ canCancel: false, cancelReason: 'AUCTION_HAS_BIDS' });
+    expect((await api.account.summary()).totalReceivedCents).toBe(0);
+  });
+  it('shows settled revenue and no-winner outcomes from actual settlement and preserves ended lots', async () => {
+    configure({ now: now + 600001, reconcileSettlements: true });
+    await vi.waitFor(
+      async () => {
+        expect((await api.account.summary()).settledCount).toBe(1);
+      },
+      { timeout: 5000, interval: 200 },
+    );
+
+    const summary = await api.account.summary();
+    const ended = (await api.account.auctions({ status: 'ENDED' })).items;
+
+    expect(summary).toMatchObject({
+      totalReceivedCents: 1000,
+      settledCount: 1,
+      withoutWinnerCount: 1,
+      wallet: { totalCents: 1000, reservedCents: 0 },
+    });
+    expect(ended.find((item) => item.id === owned[1]!.id)?.outcome).toMatchObject({
+      kind: 'SOLD',
+      amountCents: 1000,
+    });
+    expect(ended.find((item) => item.id === owned[2]!.id)?.outcome).toEqual({
+      kind: 'NO_BIDS',
+      amountCents: 0,
+    });
+    await expect(api.auctions.cancel(owned[2]!.id, createOperation({}))).rejects.toMatchObject({
+      status: 409,
+      problem: { code: 'AUCTION_ENDED' },
+    });
+    token = otherToken;
+    expect((await api.account.summary()).totalReceivedCents).toBe(0);
+    token = sellerToken;
+    configure({ reconcileSettlements: false });
   });
 });

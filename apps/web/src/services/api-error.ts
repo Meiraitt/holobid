@@ -15,6 +15,10 @@ export class ApiRequestError extends Error {
 }
 
 const messages: Record<string, string> = {
+  AUCTION_HAS_BIDS: 'Este lote recebeu um lance e não pode mais ser cancelado.',
+  AUCTION_ENDED: 'Este leilão já foi encerrado. Atualizamos os dados da sala.',
+  AUCTION_CANCELLED: 'Este lote foi cancelado.',
+  AUDIT_TAMPERED: 'A integridade do lote está em verificação. Operações indisponíveis.',
   CATALOG_UNAVAILABLE:
     'O catálogo está temporariamente indisponível. Tente novamente em instantes.',
   ITEM_NOT_FOUND: 'Esta carta não está mais disponível no catálogo. Escolha outra carta.',
