@@ -25,7 +25,7 @@ function localDateTime(offsetMinutes: number) {
 
 export function CreateAuctionView() {
   const navigate = useNavigate();
-  const { cards, user, login, createAuction } = useDemo();
+  const { cards, user, createAuction } = useDemo();
   const [query, setQuery] = useState('');
   const [cardId, setCardId] = useState('');
   const [startingBid, setStartingBid] = useState('100,00');
@@ -124,8 +124,12 @@ export function CreateAuctionView() {
         <PageHeader title="Criar leilão" />
         <EmptyState
           title="Publique como leiloeiro"
-          description="Use a conta de leiloeiro da demonstração para selecionar uma carta e definir as condições."
-          action={<Button onClick={() => login('auctioneer')}>Usar conta de leiloeiro</Button>}
+          description="Entre com uma conta de leiloeiro para publicar."
+          action={
+            <Link to="/login" className="text-link">
+              Entrar na minha conta
+            </Link>
+          }
         />
       </section>
     );

@@ -1,27 +1,39 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 
+import { safeDestination } from '../../auth/navigation';
 import { CardArtwork } from '../../components/shared/card-artwork';
 import { Button, buttonVariants } from '../../components/ui/button';
 import { Field, Input } from '../../components/ui/input';
 import { toast } from '../../components/ui/toast';
 import { useDemo } from '../../demo/demo-provider';
+import { useAuth } from '../../providers/auth-provider';
+import { errorMessage } from '../../services/api-error';
 
 type RegisterErrors = { email?: string; password?: string; confirmation?: string; form?: string };
 
 export function RegisterView() {
   const navigate = useNavigate();
-  const { cards, register } = useDemo();
+  const { cards } = useDemo();
+  const { signIn } = useAuth();
+  const location = useLocation();
+  const returnTo = location.state?.returnTo ?? new URLSearchParams(location.search).get('returnTo');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [simulateError, setSimulateError] = useState(false);
   const [errors, setErrors] = useState<RegisterErrors>({});
   const featuredCard = cards.find((card) => card.name === 'Pikachu') ?? cards[0];
 
   const isMounted = useRef(true);
+  const errorSummary = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (errors.form) {
+      errorSummary.current?.focus();
+    }
+  }, [errors.form]);
 
   useEffect(() => {
     isMounted.current = true;
@@ -56,35 +68,28 @@ export function RegisterView() {
     setErrors(nextErrors);
 
     if (Object.keys(nextErrors).length > 0) {
+      event.currentTarget
+        .querySelector<HTMLInputElement>(`#register-${Object.keys(nextErrors)[0]}`)
+        ?.focus();
+
       return;
     }
 
     setSubmitting(true);
 
     try {
-      await new Promise<void>((resolve) => window.setTimeout(resolve, 400));
+      const user = await signIn('register', { email: normalizedEmail, password });
 
+      setPassword('');
+      setConfirmation('');
+      toast.success('Conta criada', 'Sua conta de licitante está pronta.');
+      navigate(safeDestination(returnTo, user.role), { replace: true });
+    } catch (error) {
       if (!isMounted.current) {
         return;
       }
 
-      if (simulateError) {
-        setErrors({ form: 'Este e-mail já está em uso. Entre na sua conta ou use outro e-mail.' });
-        toast.error('Conta não criada', 'Prévia de um e-mail já cadastrado.');
-
-        return;
-      }
-
-      register(normalizedEmail.split('@')[0] ?? 'Colecionador', normalizedEmail);
-      setPassword('');
-      setConfirmation('');
-      toast.success(
-        'Conta de demonstração criada',
-        'Explore os lotes e experimente seu primeiro lance.',
-      );
-      navigate('/auctions');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Tente novamente em instantes.';
+      const message = errorMessage(error);
 
       setErrors({ form: message });
       toast.error('Conta não criada', message);
@@ -115,6 +120,8 @@ export function RegisterView() {
           {errors.form && (
             <div
               role="alert"
+              tabIndex={-1}
+              ref={errorSummary}
               className="rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive"
             >
               {errors.form}
@@ -146,7 +153,7 @@ export function RegisterView() {
               <Input
                 id="register-password"
                 type={showPassword ? 'text' : 'password'}
-                autoComplete="off"
+                autoComplete="new-password"
                 placeholder="Crie uma senha fictícia"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
@@ -180,7 +187,7 @@ export function RegisterView() {
             <Input
               id="register-confirmation"
               type={showPassword ? 'text' : 'password'}
-              autoComplete="off"
+              autoComplete="new-password"
               placeholder="Repita a senha"
               value={confirmation}
               onChange={(event) => setConfirmation(event.target.value)}
@@ -194,30 +201,16 @@ export function RegisterView() {
             {submitting ? 'Criando conta…' : 'Criar conta'}
           </Button>
           <p className="text-sm leading-relaxed text-muted-foreground">
-            Cadastro demonstrativo. Use dados fictícios. A senha não será enviada nem salva e o
-            perfil existe só até recarregar a página.
+            O cadastro cria uma conta de licitante. Contas de leiloeiro são administradas
+            separadamente.
           </p>
-          <details className="border-t border-border pt-4 text-sm text-muted-foreground">
-            <summary className="w-fit cursor-pointer rounded-sm py-1 underline-offset-4 hover:text-foreground hover:underline">
-              Estado da demonstração
-            </summary>
-            <label className="mt-3 flex min-h-11 cursor-pointer items-center gap-3 text-foreground">
-              <input
-                type="checkbox"
-                checked={simulateError}
-                onChange={(event) => setSimulateError(event.target.checked)}
-                disabled={submitting}
-                className="size-4 accent-primary"
-              />
-              Simular e-mail já cadastrado
-            </label>
-          </details>
         </form>
 
         <div className="mt-6 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border pt-6 text-sm">
           <span className="text-muted-foreground">Já tem uma conta?</span>
           <Link
             to="/login"
+            state={{ returnTo }}
             className={buttonVariants({
               variant: 'ghost',
               size: 'sm',

@@ -13,8 +13,9 @@ Carteira, depósitos simulados idempotentes, catálogo TCGdex e persistência de
 imagens também estão disponíveis; as rotas estão descritas abaixo.
 Publicação, vitrine e cancelamento de lotes sem lances estão implementados.
 Lances, liquidação, comprovantes, auditoria pública, painéis, Socket.IO e
-demonstração persistente estão implementados. O frontend contém apenas a estrutura
-TypeScript da BE-01; React/Vite entra na FE-01.
+demonstração persistente estão implementados. O frontend React/Vite possui todas
+as views visuais e autenticação integrada. Leilões, carteira, participações e
+auditoria ainda exibem dados de demonstração; a faixa superior informa esse limite.
 
 Requisitos
 ----------
@@ -43,7 +44,7 @@ Variáveis do processo têm precedência. NODE_ENV=test ignora o arquivo .env.
 
 Variáveis da API:
 - WEB_ORIGIN: obrigatória; origem exata do frontend, sem path ou barra final.
-  Exemplo local: http://localhost:5173. Produção exige HTTPS.
+  Exemplo local: http://127.0.0.1:5173. Produção exige HTTPS.
 - PORT: inteiro de 1 a 65535; padrão 3000.
 - NODE_ENV: development, test ou production; padrão development.
 - JWT_SECRET: chave aleatória de 32 a 64 bytes, codificada em base64url.
@@ -140,7 +141,8 @@ Secure em produção e nenhum Domain. Configure WEB_ORIGIN com a origem
 pública do frontend (não a URL interna do backend). O cliente usa fetch
 com credentials: include; mantém o JWT só na memória.
 
-Na FE-01/FE-08 e no deploy, configurar o proxy Vite/rewrite Vercel de
+O Vite já encaminha autenticação por proxy. No deploy do frontend, configurar
+o rewrite Vercel de
 /api/v1/auth/:path* para <API_ORIGIN>/api/v1/auth/:path*, mantendo o caminho,
 Origin, cookies e Set-Cookie. Chamadas auth do navegador devem usar esse
 caminho relativo, na origem do frontend, para que SameSite=Strict funcione
@@ -243,7 +245,7 @@ apps/api/src/modules/wallets        Carteira e depósitos simulados.
 apps/api/prisma                     Schema/migrations principal e audit/.
 apps/api/test                       HTTP, configuração e integração com banco.
 apps/api/scripts/test-database.mjs  Runner do PostgreSQL temporário.
-apps/web                           Frontend React/Vite, previsto na FE-01.
+apps/web                           Views React/Vite, services HTTP e sessão.
 packages/contracts/src             Contratos HTTP e Socket.IO, sem NestJS.
 
 Controllers recebem HTTP; services aplicam comportamento; repositories
@@ -787,3 +789,33 @@ integration work. The visual demo must not be presented as the completed technic
 Frontend checks: npm run test:web, npm run build:web, npm run typecheck and npm run lint.
 The six focused frontend tests validate monetary parsing, demo reservations, bid rules,
 permission checks and deadline extension. npm run check also includes these tests.
+
+Frontend e autenticação (FE-02 / FE-04)
+-------------------------------------
+    npm run dev:web
+
+Abra http://127.0.0.1:5173. Use essa mesma origem em WEB_ORIGIN da API.
+VITE_API_URL recebe a origem do backend (padrão http://127.0.0.1:3000);
+um sufixo /api/v1 legado também é aceito. Se outra aplicação ocupar a porta
+3000, ajuste PORT da API e VITE_API_URL de forma consistente. O arquivo
+apps/web/.env contém apenas configuração pública e é ignorado pelo Git.
+
+Cadastro cria BIDDER; login usa o papel retornado pela API. Access token
+fica em memória; refresh HttpOnly usa /api/v1/auth na origem do frontend.
+Rotação/logout são serializados com Web Locks entre abas. O marcador local
+de saída não contém token, senha ou identificação pessoal. Navegadores
+modernos com Web Locks suportam a coordenação entre abas; o fallback
+serializa somente operações da própria aba.
+
+Login, cadastro, refresh, consulta de usuário e logout estão integrados.
+As demais views mantêm a prévia visual, identificada na tela, até suas tasks
+de integração. O saldo visual não representa a carteira real da conta.
+
+    npm run test:web
+    npm run test:auth
+
+O segundo comando cria dois bancos descartáveis e uma API NestJS real,
+executando os services/controlador de sessão do frontend por HTTP. Não lê
+URLs externas nem usa o Neon. Faz parte de npm run check, inclusive no
+Docker/Northflank e no GitHub Actions. Docker é o padrão local; o modo
+HOLOBID_TEST_DATABASE_MODE=process requer PostgreSQL 16 no PATH.

@@ -1,25 +1,25 @@
-import { ArrowRight, Layers2, LogOut, Menu, RotateCcw } from 'lucide-react';
+import { ArrowRight, Layers2, LogOut, Menu } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 
-import { useDemo } from '../../demo/demo-provider';
-import type { DemoRole } from '../../demo/types';
 import { cn } from '../../lib/utils';
+import { useAuth } from '../../providers/auth-provider';
 import { ThemeToggle } from '../../providers/theme-provider';
-import { Money } from '../shared/money';
+import { errorMessage } from '../../services/api-error';
 import { Button, buttonVariants } from '../ui/button';
 import { Modal } from '../ui/dialog';
 import { toast } from '../ui/toast';
 
 export function AppLayout() {
-  const { user, availableCents, login, logout, reset } = useDemo();
+  const { user, status, logout } = useAuth();
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [demoOpen, setDemoOpen] = useState(false);
   const location = useLocation();
   const main = useRef<HTMLElement>(null);
   const lastPath = useRef(location.pathname);
   const nav =
-    user?.role === 'auctioneer'
+    user?.role === 'AUCTIONEER'
       ? [
           ['Leilões', '/auctions'],
           ['Meus lotes', '/my-auctions'],
@@ -39,16 +39,27 @@ export function AppLayout() {
     }
   }, [location.pathname]);
 
-  const role = (next: string) => {
-    if (next === 'visitor') {
-      logout();
-    } else {
-      login(next as DemoRole);
+  async function handleLogout() {
+    if (loggingOut) {
+      return;
     }
 
-    setDemoOpen(false);
-    toast.info('Perfil de demonstração alterado');
-  };
+    setLoggingOut(true);
+    setLogoutError(false);
+    setMenuOpen(false);
+    try {
+      await logout();
+      toast.success('Você saiu da sua conta');
+    } catch (error) {
+      setLogoutError(true);
+      toast.error(
+        'Saída local concluída',
+        'O servidor ainda não confirmou o encerramento. ' + errorMessage(error),
+      );
+    } finally {
+      setLoggingOut(false);
+    }
+  }
 
   const links = (close?: () => void) =>
     nav.map(([label, to]) => (
@@ -80,13 +91,9 @@ export function AppLayout() {
       </a>
       <div className="no-print border-b bg-muted/70">
         <div className="page-container flex min-h-9 flex-wrap items-center justify-between gap-x-4 gap-y-1 py-1 text-xs text-muted-foreground">
-          <span>Demonstração visual · Dados e saldo simulados</span>
-          <button
-            className="min-h-8 font-semibold text-info underline underline-offset-4"
-            onClick={() => setDemoOpen(true)}
-          >
-            Trocar perfil ou reiniciar
-          </button>
+          <span>
+            Cadastro e login conectados · Leilões e saldos ainda usam dados de demonstração
+          </span>
         </div>
       </div>
       <header className="border-b">
@@ -103,11 +110,13 @@ export function AppLayout() {
             {links()}
           </nav>
           <div className="flex items-center gap-3">
-            {user?.role === 'bidder' && (
-              <Link to="/wallet" className="hidden text-right sm:block">
-                <span className="block text-xs text-muted-foreground">Disponível</span>
-                <Money cents={availableCents} className="font-semibold" />
-              </Link>
+            {user && (
+              <span
+                className="hidden max-w-48 truncate text-sm text-muted-foreground sm:block"
+                title={user.email}
+              >
+                {user.email}
+              </span>
             )}
             <ThemeToggle />
             {user ? (
@@ -115,14 +124,16 @@ export function AppLayout() {
                 variant="ghost"
                 size="icon"
                 className="hidden lg:flex"
-                aria-label="Sair da demonstração"
-                onClick={() => {
-                  logout();
-                  toast.info('Você saiu do perfil de demonstração');
-                }}
+                aria-label="Sair da conta"
+                loading={loggingOut}
+                onClick={() => void handleLogout()}
               >
                 <LogOut />
               </Button>
+            ) : status === 'restoring' ? (
+              <span role="status" className="text-sm">
+                Verificando sessão…
+              </span>
             ) : (
               <Link
                 to="/login"
@@ -147,13 +158,21 @@ export function AppLayout() {
           </div>
         </div>
       </header>
+      {logoutError && (
+        <div role="alert" className="page-container py-4 text-sm text-warning">
+          Você saiu neste navegador, mas o servidor não confirmou o encerramento.
+          <Button variant="ghost" onClick={() => void handleLogout()} loading={loggingOut}>
+            Tentar encerrar novamente
+          </Button>
+        </div>
+      )}
       <main
         id="main-content"
         ref={main}
         tabIndex={-1}
         className="page-container min-h-[70dvh] py-8 outline-none sm:py-12"
       >
-        <Outlet key={`${user?.role ?? 'visitor'}-${user?.email ?? ''}`} />
+        <Outlet key={user?.id ?? 'visitor'} />
       </main>
       <footer className="mt-8 border-t">
         <div className="page-container flex flex-col justify-between gap-4 py-7 text-sm text-muted-foreground sm:flex-row">
@@ -194,52 +213,14 @@ export function AppLayout() {
             <Button
               variant="ghost"
               className="mt-4 justify-start"
-              onClick={() => {
-                logout();
-                setMenuOpen(false);
-                toast.info('Você saiu do perfil de demonstração');
-              }}
+              loading={loggingOut}
+              onClick={() => void handleLogout()}
             >
               <LogOut />
-              Sair da demonstração
+              Sair da conta
             </Button>
           )}
         </nav>
-      </Modal>
-      <Modal
-        open={demoOpen}
-        onOpenChange={setDemoOpen}
-        title="Explore a demonstração"
-        description="As ações mudam somente os dados desta aba. Recarregar restaura os exemplos; nenhuma operação é enviada à API."
-      >
-        <div className="grid gap-3">
-          <Button
-            variant={user?.role === 'bidder' ? 'default' : 'outline'}
-            onClick={() => role('bidder')}
-          >
-            Licitante · Marina
-          </Button>
-          <Button
-            variant={user?.role === 'auctioneer' ? 'default' : 'outline'}
-            onClick={() => role('auctioneer')}
-          >
-            Leiloeiro · Mesa HoloBid
-          </Button>
-          <Button variant={!user ? 'default' : 'outline'} onClick={() => role('visitor')}>
-            Visitante · sem conta
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() => {
-              reset();
-              setDemoOpen(false);
-              toast.info('Demonstração reiniciada');
-            }}
-          >
-            <RotateCcw />
-            Restaurar dados iniciais
-          </Button>
-        </div>
       </Modal>
     </>
   );
