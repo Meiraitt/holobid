@@ -21,7 +21,7 @@ export function App() {
     <Routes>
       <Route element={<AppLayout />}>
         <Route index element={<LandingView />} />
-        <Route path="/design-system" element={<DesignSystemView />} />
+        {import.meta.env.DEV && <Route path="/design-system" element={<DesignSystemView />} />}
         <Route path="/auctions" element={<AuctionsView />} />
         <Route element={<GuestOnly />}>
           <Route path="/login" element={<LoginView />} />

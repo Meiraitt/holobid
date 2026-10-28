@@ -789,10 +789,11 @@ Authentication, auctions, bidding, wallet and auctioneer management use the real
 Public receipts and audit reports use server data. Simulated money persists on the backend;
 pending mutations are journaled per account in sessionStorage. Never use real payment details.
 
-Routes include: /auctions, /auctions/:auctionId, /login, /register, /wallet, /participations,
-/my-auctions, /auctions/new, /auctions/:auctionId/audit, /receipts/:receiptId and /design-system.
-The design system documents actual reusable buttons, fields, cards, dialogs, notifications
-and status components in light/dark modes. A sun/moon button toggles the saved theme; dark is the default.
+Routes include: /, /auctions, /auctions/:auctionId, /login, /register, /wallet, /participations,
+/my-auctions, /auctions/new, /auctions/:auctionId/audit and /receipts/:receiptId.
+During development only, /design-system documents actual reusable buttons, fields, cards,
+dialogs, notifications and status components in light/dark modes. Its route and footer link
+are excluded from production builds. A sun/moon button toggles the saved theme; dark is the default.
 App only composes routed views.
 Audit verdicts and final hashes come from the server. No preview controls or fabricated
 hashes are used in public audit or receipt views.
