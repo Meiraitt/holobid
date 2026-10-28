@@ -1,39 +1,73 @@
 HoloBid
 -------
 
-Plataforma de leilões de cartas Pokémon, com catálogo TCGdex.
+Leilões de cartas Pokémon com catálogo TCGdex, carteira simulada, disputa em
+tempo real e auditoria pública do histórico de lances.
 
-Estado atual
-------------
-Monorepo com a base HTTP NestJS 11 e persistência PostgreSQL/Prisma: schemas,
-migrations, constraints e contexto transacional. Cadastro, login com
-Argon2id/JWT e consulta do usuário autenticado estão implementados.
-Sessões persistidas, refresh, logout e autorização estão implementados.
-Carteira, depósitos simulados idempotentes, catálogo TCGdex e persistência de
-imagens também estão disponíveis; as rotas estão descritas abaixo.
-Publicação, vitrine e cancelamento de lotes sem lances estão implementados.
-Lances, liquidação, comprovantes, auditoria pública, painéis, Socket.IO e
-demonstração persistente estão implementados. O frontend React/Vite possui todas
-as views visuais, autenticação, vitrine pública, publicação, painel do leiloeiro e sala de lances integrados. Abas e paginação
-consultam a API; início/fim são reconciliados a cada 15 segundos e ao retomar o foco.
-A sala envia lances HTTP e sincroniza histórico/posição/saldo por Socket.IO. Usa
-horário do servidor com tempo monotônico para o contador. Só anuncia arremate após
-liquidação e verificação confirmadas. Operações incertas preservam chave e valor
-por conta/lote/aba no sessionStorage; uma repetição consulta a mesma solicitação.
-O painel usa totais globais do servidor e cancela lotes sem lances, preservando histórico.
-A carteira consulta saldo total, reservado e disponível reais e os lotes com
-reserva. Depósitos simulados são persistidos pela API, com confirmação, prevenção
-de duplo envio e recuperação da mesma solicitação após falha de rede.
-Participações, comprovantes e auditoria pública estão integrados com a API. A conexão é recriada após renovação de JWT/logout; salas aguardam
-ACK e novos snapshots antes de liberar lances. Refetch a cada 30 segundos e ao
-retomar foco complementa os eventos. A navegação da
-sala para a auditoria e o comprovante usa as respectivas views integradas.
-O conteúdo público da sala é consultado em paralelo à inscrição WebSocket.
-A primeira resposta pode mostrar a carta, mas lances continuam bloqueados até
-uma nova leitura após o ACK, incluindo posição e saldo. Eventos durante essa
-verificação exigem outra leitura; falhas mantêm as ações bloqueadas.
-Painel e sala ficam no carregamento inicial para evitar uma segunda espera de
-renderização; as demais views secundárias continuam carregadas sob demanda.
+O leiloeiro publica e gerencia os próprios lotes. Licitantes depositam saldo
+simulado, disputam cartas e recebem um comprovante compartilhável ao vencer.
+Visitantes consultam vitrine, salas, comprovantes e auditoria sem cadastro.
+
+Guia de leitura
+---------------
+01. Avaliar a aplicação publicada: links, contas e roteiro de demonstração.
+02. Executar localmente: requisitos, configuração, bancos, seed e comandos.
+03. Arquitetura: stack, organização, responsabilidades e persistência.
+04. Referência da API: autenticação, carteira, catálogo, lances e auditoria.
+05. Interface e sincronização: rotas, recuperação de operações e WebSocket.
+06. Testes e CI: verificações locais, navegador e aceitação de release.
+07. Deploy: Docker/Northflank, Neon e Vercel, com releases independentes.
+08. Desenvolvimento: formatação, dependências e convenções de contribuição.
+
+01. Avaliar a aplicação publicada
+--------------------------------
+
+Aplicação: https://holobid.vercel.app
+API: https://holobid--meiraitt--fmvj6fdxbbcx.code.run/api/v1
+Saúde da API: https://holobid--meiraitt--fmvj6fdxbbcx.code.run/api/v1/health/live
+Repositório único (frontend + backend): https://github.com/Meiraitt/holobid
+
+Contas de demonstração
+---------------------
+Papel              E-mail                              Saldo inicial do seed
+Leiloeiro          auctioneer@demo.holobid.test          R$ 0,00
+Licitante A         bidder1@demo.holobid.test             R$ 500,00
+Licitante B         bidder2@demo.holobid.test             R$ 500,00
+Senha das três contas: HoloBidDemo123!
+
+Essas credenciais são públicas por intenção e exclusivas da demonstração.
+Todo dinheiro é simulado; não há cobrança, saque ou pagamento real. O seed
+não restaura saldos nem apaga histórico: os valores atuais podem diferir
+após outros testes. O licitante pode adicionar saldo simulado na carteira.
+Cadastro público cria somente licitantes; use a conta seed para o leiloeiro.
+
+Roteiro de avaliação
+-------------------
+1. Entre como leiloeiro em uma janela. Em "Meus lotes", crie um lote,
+   busque uma carta na TCGdex e defina início imediato, lance de R$ 100,00,
+   incremento de R$ 10,00 e término alguns minutos à frente.
+2. Use duas sessões independentes para os licitantes A e B (perfis de
+   navegador distintos ou janela normal + anônima). Verifique a carteira
+   e, se necessário, adicione saldo simulado para os lances.
+3. Abra a mesma sala nas duas sessões. A oferece R$ 100,00; B oferece
+   R$ 110,00. Observe a liderança, o histórico, a posição e a liberação
+   da reserva de A sem recarregar a página.
+4. Aguarde o encerramento. Um lance nos últimos dois minutos prorroga
+   o fim para dois minutos após sua aceitação. A liquidação é automática
+   no servidor e continua mesmo se todos fecharem o navegador.
+5. Confira o débito de B, o crédito do leiloeiro e o resultado em "Meus
+   leilões". B acessa "Meus lances", aba "Arrematados", para abrir o comprovante.
+6. Abra o link do comprovante e a auditoria do lote sem login. O histórico
+   deve estar verificado, com pseudônimos e sem e-mails dos licitantes.
+7. Para conferir cancelamento, publique outro lote sem lances e cancele-o
+   no painel. Ele sai da vitrine, preservando o histórico de auditoria.
+
+Também há um lote demonstrativo renovável a cada dia UTC. Se ele já tiver
+lances altos, publique um lote separado para avaliar a disputa rapidamente.
+Veja "Demonstração persistente" para as regras de renovação e conservação.
+
+02. Executar localmente
+-----------------------
 
 Requisitos
 ----------
@@ -46,40 +80,75 @@ Use um gerenciador de versões ou instale essas versões antes dos comandos.
 Se já usa nvm, execute nvm install e nvm use na raiz. A instalação rejeita
 versões incompatíveis com os intervalos de engines do projeto.
 
-Preparação
-----------
-Na raiz:
+Preparação do ambiente
+----------------------
+Se ainda não tiver o código local, clone o repositório:
+
+    git clone https://github.com/Meiraitt/holobid.git
+    cd holobid
+
+Na raiz do repositório:
 
     npm ci
     cp apps/api/.env.example apps/api/.env
     cp apps/web/.env.example apps/web/.env
-    docker compose up -d --wait postgres
-    npm run db:migrate
-    npm run db:audit:migrate
 
-O NestJS carrega apps/api/.env quando iniciado pelos scripts abaixo.
-Variáveis do processo têm precedência. NODE_ENV=test ignora o arquivo .env.
-
-Variáveis da API:
-- WEB_ORIGIN: obrigatória; origem exata do frontend, sem path ou barra final.
-  Exemplo local: http://127.0.0.1:5173. Produção exige HTTPS.
-- PORT: inteiro de 1 a 65535; padrão 3000.
-- NODE_ENV: development, test ou production; padrão development.
-- JWT_SECRET: chave aleatória de 32 a 64 bytes, codificada em base64url.
-  Obrigatória, privada e estável entre reinicializações. Gere uma vez com:
+Antes de iniciar a API ou o seed, edite apps/api/.env:
+- Mantenha as URLs locais de PostgreSQL fornecidas pelo .env.example.
+- Use WEB_ORIGIN=http://127.0.0.1:5173.
+- Preencha JWT_SECRET, AUDIT_HMAC_SECRET e AUDIT_PSEUDONYM_SECRET com
+  três chaves diferentes. Execute o comando abaixo uma vez para cada chave:
 
     node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
 
-  Salve o resultado apenas em apps/api/.env ou no secret do deploy.
-- DATABASE_URL: conexão PostgreSQL principal; obrigatória.
-- AUDIT_DATABASE_URL: conexão de auditoria em outro banco; obrigatória.
-- DIRECT_DATABASE_URL / DIRECT_AUDIT_DATABASE_URL: opcionais, usadas somente
-  pelo CLI para migrations quando as URLs de runtime apontam para poolers.
-  Sem elas, os comandos de migration usam as respectivas URLs de runtime.
+- Mantenha AUDIT_KEY_ID=v1 e as chaves estáveis entre reinicializações.
+- Defina DEMO_MODE=true para habilitar as contas e a renovação do lote demo.
+- apps/web/.env contém apenas as origens públicas locais da API e do socket.
 
-Configuração inválida impede a inicialização e informa somente os nomes
-das variáveis inválidas, sem imprimir os valores.
-VITE_* será consumido pelo frontend e nunca deve conter segredos.
+Suba o banco, aplique as migrations e crie os dados de demonstração:
+
+    docker compose up -d --wait postgres
+    npm run db:audit:migrate
+    npm run db:migrate
+    npm run db:seed
+
+Em dois terminais separados, na raiz:
+
+    npm run dev:api
+
+    npm run dev:web
+
+Abra http://127.0.0.1:5173 e use as contas da seção anterior. Prefira essa
+origem em todos os acessos locais; localhost e 127.0.0.1 são origens distintas.
+A API responde em http://127.0.0.1:3000/api/v1. Vite encaminha a autenticação
+para ela e mantém o cookie de refresh na mesma origem do frontend.
+
+O NestJS carrega apps/api/.env pelos scripts acima. Variáveis do processo
+têm precedência; NODE_ENV=test ignora esse arquivo. Nunca versionar .env.
+O Compose inicia somente PostgreSQL, com dois bancos/papéis locais separados;
+API e frontend rodam nos terminais. docker compose stop postgres conserva o
+volume e os dados. Não use credenciais locais no deploy.
+
+Variáveis da API
+---------------
+NODE_ENV                        development local; production no deploy.
+PORT                            Porta HTTP; padrão 3000.
+WEB_ORIGIN                      Origem exata do frontend, sem barra final.
+DATABASE_URL                    Conexão PostgreSQL principal.
+AUDIT_DATABASE_URL              Conexão do banco de auditoria independente.
+DIRECT_DATABASE_URL             Opcional; URL direta para migrations principais.
+DIRECT_AUDIT_DATABASE_URL       Opcional; URL direta para migrations de auditoria.
+JWT_SECRET                      Chave de assinatura dos access tokens.
+AUDIT_HMAC_SECRET               Chave de autenticação da cadeia de auditoria.
+AUDIT_PSEUDONYM_SECRET          Chave para pseudônimos por lote.
+AUDIT_KEY_ID                    Identificador da chave; padrão v1.
+DEMO_MODE                       false por padrão; true apenas na demonstração.
+
+As três chaves devem ser diferentes, com 32 a 64 bytes aleatórios codificados
+em base64url. As URLs diretas são usadas pelo CLI quando o runtime usa pooler;
+sem elas, migrations usam as respectivas URLs de runtime. Não é necessária
+uma API key do Prisma ou da TCGdex. Configuração inválida impede a
+inicialização e informa nomes das variáveis, sem imprimir valores.
 
 Executar a API
 --------------
@@ -93,8 +162,8 @@ Para executar o build:
     npm run build:api
     npm run start:api
 
-    curl http://localhost:3000/api/v1/health/live
-    curl http://localhost:3000/api/v1/health/ready
+    curl http://127.0.0.1:3000/api/v1/health/live
+    curl http://127.0.0.1:3000/api/v1/health/ready
 
 GET /api/v1/health/live retorna 200 com {"status":"ok"}, sem acessar banco.
 GET /api/v1/health/ready retorna 200 com {"status":"ready"} depois da
@@ -106,7 +175,136 @@ do deploy, não executadas automaticamente ao iniciar a API.
 Use health/live para sondagens periódicas do provedor: health/ready acessa
 os bancos e pode acordar instâncias Neon suspensas por inatividade.
 
-Autenticação e sessões (BE-04/BE-05)
+Demonstração persistente
+  Set DEMO_MODE=true only on the evaluation/demo deployment. It is false by
+  default. Apply both database migrations, then run npm run db:seed from root.
+  The API also recovers/seeds the demo at startup when this flag is enabled.
+  This explicitly provisions public demo accounts, never a production admin.
+
+  Use as contas documentadas em "Avaliar a aplicação publicada". Os saldos,
+  reservas, senhas, lances, comprovantes e vendas existentes não são resetados.
+  Colisões de e-mail com contas não relacionadas falham; não promovem usuários.
+
+  First seed: one live Pikachu lot, one scheduled Charizard lot (+1 hour), and
+  one completed no-bid scenario. Card data/images are genuine TCGdex snapshots,
+  with checksums and provenance under apps/api/fixtures/tcgdex. No network is
+  needed. Later renewable lots reuse the previous persisted snapshot/image.
+  Initial funding is written once to the wallet ledger. No synthetic bids are
+  created. Use both bidders to bid, overbid, check released funds and audit.
+  The auctioneer can publish a short separate lot to evaluate settlement quickly.
+
+  A renewable lot spans a fixed 24-hour UTC window (00:00 to next 00:00), so
+  the first day's remaining duration depends on when the seed runs. At most one
+  is created per UTC day and one can be OPEN. Cancellation does not create a
+  replacement on the same day. Anti-sniping across midnight postpones rotation
+  until the old lot settles. All previous history remains available.
+  Startup after missed days settles the previous lot and opens only today's lot;
+  it does not backfill missed days or reset demo accounts. Existing unresolved
+  settlement/audit failures stop rotation and are logged without private data.
+  Native timers follow deadlines; failures retry after 1s/5s/30s, then 15 minutes.
+  No minute-by-minute database polling or external scheduling service is used.
+  Deploy must preserve PostgreSQL and signing keys, and include apps/api/fixtures
+  alongside dist. The seed CLI starts no HTTP server or background scheduler.
+
+03. Arquitetura
+---------------
+
+Stack e decisões
+----------------
+Frontend: React, TypeScript, Vite, Tailwind e componentes shadcn/Base UI.
+Backend: Node.js, TypeScript, NestJS, Prisma e PostgreSQL.
+Comunicação: HTTP para comandos/consultas; Socket.IO para notificações.
+Autenticação: Argon2id, JWT curto e refresh token em cookie HttpOnly.
+Deploy: Vercel para frontend, Northflank para API e dois projetos Neon para
+separar dados principais e âncoras de auditoria. Tudo no mesmo monorepo,
+com builds e releases independentes.
+
+Uma única instância da API mantém timers e o adapter Socket.IO em memória.
+Não há Redis ou serviço de fila. O PostgreSQL preserva os prazos e as
+operações; a API recupera o trabalho pendente ao iniciar. Múltiplas réplicas
+exigiriam coordenação de tarefas e distribuição das notificações.
+
+Valores monetários usam centavos inteiros; não há aritmética financeira
+com números decimais de ponto flutuante. Controllers validam a entrada,
+services coordenam regras/transações e repositories acessam o banco.
+As views compõem a interface; App organiza rotas e os componentes são
+reutilizados. A API é a autoridade para permissões, valores e horários.
+
+Estrutura
+---------
+apps/api/src/config                 Validação das variáveis de ambiente.
+apps/api/src/common/http            Middleware, filtro, exceção e pipe.
+apps/api/src/modules/health         Controller, service e módulo de saúde.
+apps/api/src/database               Clients, pools e contexto transacional.
+apps/api/src/modules/auth           Credenciais, sessões, cookies e guards.
+apps/api/src/modules/auctions       Publicação, vitrine, propriedade e cancelamento.
+apps/api/src/modules/users          Repository concreto de usuários.
+apps/api/src/modules/wallets        Carteira e depósitos simulados.
+apps/api/prisma                     Schema/migrations principal e audit/.
+apps/api/test                       HTTP, configuração e integração com banco.
+apps/api/scripts/test-database.mjs  Runner do PostgreSQL temporário.
+apps/web                           Views React/Vite, services HTTP e sessão.
+packages/contracts/src             Contratos HTTP e Socket.IO, sem NestJS.
+
+Controllers recebem HTTP; services aplicam comportamento; repositories
+concretos acessam a persistência. O módulo de saúde delega a checagem de
+conectividade aos providers de banco; regras de leilão ficam nos domínios.
+O deploy usa Northflank para a API e Vercel para o frontend,
+com builds independentes a partir do mesmo repositório.
+
+Persistência e migrations
+-------------------------
+    npm run db:generate
+    npm run db:migrate
+    npm run db:audit:migrate
+
+npm ci gera os dois clients Prisma; não precisa de banco ou de credenciais
+para gerar/buildar. Os clients ficam em src/generated, ignorados pelo Git.
+Prisma 7.10.1 usa o adapter pg e geração CommonJS, compatível com NestJS 11.
+Referências:
+https://www.prisma.io/docs/orm/v7/prisma-schema/overview/generators
+https://www.prisma.io/docs/orm/v7/core-concepts/supported-databases/postgresql
+
+Migrations são SQL versionado e transacional, aplicado por migrate deploy.
+Reexecutar esses comandos não reaplica migrations concluídas. Não usar
+prisma db push: CHECKs e índices parciais são mantidos no SQL e não estão
+integralmente representados no schema Prisma. Novas alterações exigem
+nova migration; não editar migrations que já chegaram a uma base compartilhada.
+
+Valores monetários usam BIGINT em centavos. A carteira garante
+0 <= reservado <= total <= 100.000.000.000 centavos. Disponível é calculado.
+Há unicidade de email normalizado, sequência por leilão, reserva ativa,
+liquidação, recibo, entrada financeira e chave de idempotência. FKs compostas
+impedem referências a lances de outro lote ou reservas de outro licitante.
+Datas são timestamptz. Relações históricas restringem exclusões em cascata.
+
+Services abrem DatabaseService.transaction e passam o mesmo tx aos
+repositories. Escritas dos repositories exigem esse contexto; nenhum
+repository abre uma transação independente. UsersRepository e
+WalletsRepository são a primeira implementação concreta. Os demais
+repositories seguem as regras dos respectivos domínios.
+
+Os clients usam pools pequenos, conexão lazy e limites de espera/consulta;
+fecham as conexões no shutdown. Eles não disparam sondagens periódicas.
+A transação principal não inclui a base de auditoria: o protocolo de
+confirmação, HMAC e recuperação da auditoria coordena commits separados. As
+primitivas internas, lances e auditoria pública estão implementados.
+
+O Compose sobe somente PostgreSQL local, com dois bancos e papéis distintos,
+sem permissão de conexão cruzada e porta exposta apenas em 127.0.0.1:55432.
+As senhas de local-init.sql são exclusivamente locais. Os dados de
+desenvolvimento persistem em um volume; docker compose stop postgres para
+o serviço sem apagar esses dados. Não reutilizar essas credenciais em deploy.
+Em produção, o plano usa projetos/credenciais separados para que alterações
+na base principal não também alterem as âncoras. O isolamento local por
+papéis não protege contra alguém que controle o administrador do cluster.
+O deploy usa dois projetos Neon separados; configuração Docker e release
+estão descritos na seção "Deploy" abaixo.
+
+04. Referência da API
+---------------------
+
+Autenticação e sessões
 ----------------------------------
 POST /api/v1/auth/register recebe {email, password}, responde 201 e cria
 somente BIDDER com carteira zero. POST /api/v1/auth/login responde 200.
@@ -114,7 +312,7 @@ Ambos retornam {user: {id, email, role}, accessToken, expiresIn: 900} e
 configuram o cookie de refresh. Usuário, carteira e sessão são gravados
 na mesma transação do cadastro. O token de refresh nunca aparece no JSON.
 GET /api/v1/auth/me exige Authorization: Bearer <accessToken> e devolve
-apenas id/email/role. O seed cria o leiloeiro de demonstração (ver seção BE-15).
+apenas id/email/role. O seed cria o leiloeiro de demonstração (ver "Demonstração persistente").
 
 Email é normalizado com trim/lowercase; senha aceita 10–128 caracteres,
 sem trim ou truncamento. Argon2id usa m=19456 KiB, t=2, p=1 e salt aleatório.
@@ -132,7 +330,7 @@ Cada JWT contém sid. Rotas protegidas verificam assinatura, expiração,
 issuer/audience e sessão ativa no PostgreSQL, usando o papel atual do
 usuário. @RequireRoles combina autenticação e autorização. Propriedade de
 lote é verificada pelo service/repository: lote alheio e inexistente retornam
-o mesmo 404. Não há novas rotas de negócio de leilão nesta task.
+o mesmo 404. As rotas de leilão estão documentadas abaixo.
 
 POST /api/v1/auth/refresh recebe {} e o cookie; retorna 200 com AuthResponse
 e um novo cookie. A sessão dura no máximo 7 dias desde o login: renovação
@@ -165,21 +363,20 @@ o rewrite Vercel de
 Origin, cookies e Set-Cookie. Chamadas auth do navegador devem usar esse
 caminho relativo, na origem do frontend, para que SameSite=Strict funcione
 entre deploys separados. Demais chamadas Bearer podem usar VITE_API_URL.
-A URL real de destino será definida no deploy; nenhum rewrite de produção
-com endereço fictício foi publicado nesta etapa.
+O destino de produção está versionado em vercel.json. Veja a seção de deploy.
 
 Exemplo de login local (substituir por uma conta cadastrada):
 
-    curl -i http://localhost:3000/api/v1/auth/login \
-      -H 'Origin: http://localhost:5173' \
+    curl -i http://127.0.0.1:3000/api/v1/auth/login \
+      -H 'Origin: http://127.0.0.1:5173' \
       -H 'Content-Type: application/json' \
       -H 'X-CSRF-Protection: 1' \
       --data '{"email":"bidder@example.test","password":"your-password"}'
 
 SessionsService.authenticate expõe a identidade e o prazo de expiração
-para o gateway Socket.IO. SessionRevocationEvents permite que BE-14 desconecte
+para o gateway Socket.IO. SessionRevocationEvents desconecta
 sockets após o commit do logout; falha no listener não desfaz a revogação.
-Sockets estão implementados na BE-14. Sessões sobrevivem a reinícios,
+Sessões sobrevivem a reinícios,
 desde que o banco e JWT_SECRET permaneçam os mesmos.
 
 Convenções HTTP
@@ -198,132 +395,9 @@ Convenções HTTP
 - CORS permite apenas WEB_ORIGIN. Chamadas sem Origin continuam possíveis
   para clientes HTTP e healthchecks. CORS não substitui autenticação/CSRF;
   os POSTs auth exigem Origin e o header CSRF mesmo para clientes HTTP.
-- Respostas HTTP usam Cache-Control: no-store nesta etapa; mídia imutável
-  terá sua política própria quando for implementada.
+- Respostas JSON usam Cache-Control: no-store; mídia imutável usa cache e ETag.
 
-Persistência e migrations
--------------------------
-    npm run db:generate
-    npm run db:migrate
-    npm run db:audit:migrate
-
-npm ci gera os dois clients Prisma; não precisa de banco ou de credenciais
-para gerar/buildar. Os clients ficam em src/generated, ignorados pelo Git.
-Prisma 7.10.1 usa o adapter pg e geração CommonJS, compatível com NestJS 11.
-Referências:
-https://www.prisma.io/docs/orm/v7/prisma-schema/overview/generators
-https://www.prisma.io/docs/orm/v7/core-concepts/supported-databases/postgresql
-
-Migrations são SQL versionado e transacional, aplicado por migrate deploy.
-Reexecutar esses comandos não reaplica migrations concluídas. Não usar
-prisma db push: CHECKs e índices parciais são mantidos no SQL e não estão
-integralmente representados no schema Prisma. Novas alterações exigem
-nova migration; não editar migrations que já chegaram a uma base compartilhada.
-
-Valores monetários usam BIGINT em centavos. A carteira garante
-0 <= reservado <= total <= 100.000.000.000 centavos. Disponível é calculado.
-Há unicidade de email normalizado, sequência por leilão, reserva ativa,
-liquidação, recibo, entrada financeira e chave de idempotência. FKs compostas
-impedem referências a lances de outro lote ou reservas de outro licitante.
-Datas são timestamptz. Relações históricas restringem exclusões em cascata.
-
-Services abrem DatabaseService.transaction e passam o mesmo tx aos
-repositories. Escritas dos repositories exigem esse contexto; nenhum
-repository abre uma transação independente. UsersRepository e
-WalletsRepository são a primeira implementação concreta. Os demais
-repositories entram junto das respectivas regras de negócio.
-
-Os clients usam pools pequenos, conexão lazy e limites de espera/consulta;
-fecham as conexões no shutdown. Eles não disparam sondagens periódicas.
-A transação principal não inclui a base de auditoria: o protocolo de
-confirmação, HMAC e recuperação da BE-08 coordena commits separados. As
-primitivas internas, lances e auditoria pública estão implementados.
-
-O Compose sobe somente PostgreSQL local, com dois bancos e papéis distintos,
-sem permissão de conexão cruzada e porta exposta apenas em 127.0.0.1:55432.
-As senhas de local-init.sql são exclusivamente locais. Os dados de
-desenvolvimento persistem em um volume; docker compose stop postgres para
-o serviço sem apagar esses dados. Não reutilizar essas credenciais em deploy.
-Em produção, o plano usa projetos/credenciais separados para que alterações
-na base principal não também alterem as âncoras. O isolamento local por
-papéis não protege contra alguém que controle o administrador do cluster.
-O deploy usa dois projetos Neon separados; configuração Docker e release
-estão descritos na seção BE-17 abaixo.
-
-Estrutura
----------
-apps/api/src/config                 Validação das variáveis de ambiente.
-apps/api/src/common/http            Middleware, filtro, exceção e pipe.
-apps/api/src/modules/health         Controller, service e módulo de saúde.
-apps/api/src/database               Clients, pools e contexto transacional.
-apps/api/src/modules/auth           Credenciais, sessões, cookies e guards.
-apps/api/src/modules/auctions       Publicação, vitrine, propriedade e cancelamento.
-apps/api/src/modules/users          Repository concreto de usuários.
-apps/api/src/modules/wallets        Carteira e depósitos simulados.
-apps/api/prisma                     Schema/migrations principal e audit/.
-apps/api/test                       HTTP, configuração e integração com banco.
-apps/api/scripts/test-database.mjs  Runner do PostgreSQL temporário.
-apps/web                           Views React/Vite, services HTTP e sessão.
-packages/contracts/src             Contratos HTTP e Socket.IO, sem NestJS.
-
-Controllers recebem HTTP; services aplicam comportamento; repositories
-concretos acessam a persistência. O módulo de saúde delega a checagem de
-conectividade aos providers de banco; regras de leilão ficam nos domínios.
-O deploy planejado usa Northflank para a API e Vercel para o frontend,
-com builds independentes a partir do mesmo repositório.
-
-Verificações antes de cada commit
---------------------------------
-    npm run check
-    git diff --check
-    git diff --cached --check
-
-check executa lint, typecheck, builds, testes HTTP e testes PostgreSQL,
-parando na primeira falha. Docker precisa estar em execução. Corrija o problema e repita antes de commitar; valide novamente se
-alterar código após os checks. Essa é uma etapa manual, sem hook instalado.
-
-Na primeira instalação, após alterar dependências/lockfile e antes de
-concluir cada PR, rode npm ci antes de npm run check. Comandos individuais:
-
-    npm run lint
-    npm run typecheck
-    npm run build
-    npm run test:api
-    npm run test:db
-    npm run build:api
-    npm run build:web
-
-test:api executa Jest/Supertest com a configuração HTTP real e providers
-substitutos somente para conectividade. As rotas _test existem apenas nos
-testes. test:db cria dois containers exclusivos com nomes aleatórios, portas locais
-dinâmicas e dados em memória (ou usa os serviços efêmeros do job no CI). Aplica as migrations em bases vazias, repete
-para verificar idempotência e testa constraints, concorrência de reservas,
-rollback entre repositories, isolamento de credenciais e readiness.
-O runner ignora URLs externas/.env e remove seus próprios containers ao final;
-não limpa volumes nem acessa bases existentes. A primeira execução pode
-baixar a imagem postgres:16-alpine. Não pula os testes se Docker faltar.
-Registre no PR os resultados reais e os cenários manuais da task.
-
-O GitHub Actions chama npm ci e o mesmo npm run check. Enquanto sua execução
-estiver indisponível, a validação local permanece obrigatória; ela não
-reproduz o ambiente Linux do runner.
-
-Dependências
-------------
-NestJS 11 mantém compatibilidade com CommonJS. O override de multer para
-2.5.0 corrige a dependência 2.4.0 do adapter Express; reavaliar esse override
-quando o adapter incorporar a correção. Referência:
-https://github.com/advisories/GHSA-q7qp-rjg7-q26m
-Não há upload de arquivos neste escopo.
-
-Contribuição
-------------
-Cada task possui branch, commit(s) e PR próprios, com títulos e descrições
-em inglês. Planos Markdown, .env reais, dependências e arquivos gerados
-ficam fora do Git. Este README e templates .env.example são versionados.
-O repositório começa privado e será público para a entrega.
-
-Wallets (BE-06)
+Wallets
   GET /api/v1/wallet: authenticated user's totals, reservations, available cents,
   version and serverTime. Both roles can read their own wallet.
   POST /api/v1/wallet/deposits: BIDDER only, Bearer token, JSON {"amountCents": 1000}
@@ -339,7 +413,7 @@ Wallets (BE-06)
   422 BALANCE_LIMIT_EXCEEDED leaves the wallet unchanged. Never send a userId.
   Replayed wallet data reflects that operation; GET /wallet obtains current state.
 
-Catalog and media (BE-07)
+Catalog and media
   GET /api/v1/catalog/items?q=pikachu&page=1&limit=20 and
   GET /api/v1/catalog/items/:externalId require an AUCTIONEER bearer session.
   Search accepts up to 80 characters, page 1..10000 and limit 1..20.
@@ -367,7 +441,7 @@ Catalog and media (BE-07)
   References: https://tcgdex.dev/rest/filtering-sorting-pagination
   https://tcgdex.dev/rest/card and https://tcgdex.dev/assets
 
-Audit primitives (BE-08)
+Audit primitives
   Configure AUDIT_HMAC_SECRET and AUDIT_PSEUDONYM_SECRET with separate random
   32..64-byte base64url keys (same generation command as JWT_SECRET). All three
   keys must differ. Keep AUDIT_KEY_ID=v1 and these keys stable across deploys.
@@ -397,10 +471,10 @@ Audit primitives (BE-08)
   It excludes mutable wallet totals, which can change in other legitimate actions.
   Missing/changed evidence remains PENDING; never infer rollback from absent rows
   or rebuild anchors from the main database. No automatic discard of old intents.
-  AuditService.reconcile is available for retries/recovery; scheduler wiring is
-  BE-11 and the public history/audit endpoint is BE-12. No cloud provision occurred.
+  AuditService.reconcile handles retries/recovery, wired to the settlement
+  scheduler. The public /audit route verifies the complete history.
 
-Auction publication and lifecycle (BE-09)
+Auction publication and lifecycle
   POST /api/v1/auctions requires AUCTIONEER, Bearer and UUID v4 Idempotency-Key.
   Body: {externalItemId, startingPriceCents, minimumIncrementCents, startsAt, endsAt}.
   Amounts are positive integer cents, at most 100,000,000,000. Dates use an ISO
@@ -433,10 +507,10 @@ Auction publication and lifecycle (BE-09)
   Idempotency-Key. It locks and soft-cancels only an unended, confirmed lot without
   bids. Repetition is safe; wrong owner/missing lot both return AUCTION_NOT_FOUND.
   Cancelled public details are 404, while history, snapshots, media and the anchor
-  remain intact. Internal verification still works; the public audit route is BE-12.
+  remain intact. Internal verification and the public audit route remain available.
   There are no PATCH/DELETE, manual end, role-changing or tampering endpoints.
 
-Transactional bidding (BE-10)
+Transactional bidding
   POST /api/v1/auctions/:id/bids requires BIDDER, Bearer, UUID v4 Idempotency-Key
   and {amountCents}. Integer cents: 1..100,000,000,000. Owners cannot bid even if
   their role changes. First bid >= starting price; next bid >= current + increment.
@@ -459,7 +533,7 @@ Transactional bidding (BE-10)
   may be uncertain. Retry the same body/key to reconcile, never a new key. An absent
   uncertain primary operation remains pending. Replays return the original response;
   GET current auction/wallet state afterwards. Ten new attempts/10 seconds/user;
-  completed replays bypass the limiter. WebSocket notifications are BE-14.
+  completed replays bypass the limiter. Confirmed changes trigger WebSocket notifications.
 
   Stable failures include BID_BELOW_MINIMUM (with minimumBidCents), ALREADY_LEADING,
   AUCTION_NOT_STARTED/ENDED/CANCELLED, INSUFFICIENT_FUNDS, BID_LIMIT_REACHED,
@@ -467,7 +541,7 @@ Transactional bidding (BE-10)
   Read integrity diagnostics before any operational repair; never reconstruct a
   trusted checkpoint from potentially altered main data.
 
-Automatic settlement and receipts (BE-11)
+Automatic settlement and receipts
   The same API process schedules starts and ends from persistent auction dates.
   Publication, bidding and cancellation signal a reload of the durable deadline;
   every settlement job locks the auction and checks its current endsAt again.
@@ -498,7 +572,7 @@ Automatic settlement and receipts (BE-11)
   development/production; isolated tests start it explicitly. No extra worker,
   Redis, queue package or third-party scheduler service is required.
   Recovery may delay settlement after an outage, but bids still respect endsAt.
-  Demo rollover is a separate seed task. Socket delivery remains BE-14.
+  Demo rollover is a separate seed task; Socket.IO notifies connected clients.
 
   GET /api/v1/receipts/:publicCode is public, no-store, and returns PublicReceipt:
   {publicCode, auctionId, title, imageUrl, setName, cardNumber, description?,
@@ -506,7 +580,7 @@ Automatic settlement and receipts (BE-11)
   The code contains 24 random bytes (32 base64url characters). Unknown or malformed
   codes return 404 RECEIPT_NOT_FOUND. Snapshot/image data remain local and work
   while TCGdex is unavailable. No seller/bidder IDs, emails or wallet values appear.
-  imageUrl/auditUrl are API-relative paths; the public audit endpoint is BE-12.
+  imageUrl/auditUrl are API-relative paths; the public audit route is /auctions/:auctionId/audit.
 
 
 Public history and audit
@@ -589,46 +663,188 @@ Realtime notifications
   References: https://socket.io/docs/v4/server-options/
               https://socket.io/docs/v4/middlewares/
 
+05. Interface e sincronização
+-----------------------------
 
-Durable simulated demo
-  Set DEMO_MODE=true only on the evaluation/demo deployment. It is false by
-  default. Apply both database migrations, then run npm run db:seed from root.
-  The API also recovers/seeds the demo at startup when this flag is enabled.
-  This explicitly provisions public demo accounts, never a production admin.
+Frontend application
 
-  Account                            Role          Initial simulated balance
-  auctioneer@demo.holobid.test        AUCTIONEER    R$ 0.00
-  bidder1@demo.holobid.test           BIDDER        R$ 500.00
-  bidder2@demo.holobid.test           BIDDER        R$ 500.00
-  Password for these demo accounts: HoloBidDemo123!
-  These credentials are intentionally public and exclusive to this environment.
-  Passwords use the same Argon2id service as registration. Existing balances,
-  reservations, passwords, bids, receipts and sales are never reset by the seed.
-  Email collisions with unrelated accounts fail; they are never promoted.
-  All money is simulated. There are no payments, withdrawals or real sales.
+The React/Vite application uses Tailwind and locally customized shadcn/Base UI components.
+Authentication, auctions, bidding, wallet and auctioneer management use the real API.
+Public receipts and audit reports use server data. Simulated money persists on the backend;
+pending mutations are journaled per account in sessionStorage. Never use real payment details.
 
-  First seed: one live Pikachu lot, one scheduled Charizard lot (+1 hour), and
-  one completed no-bid scenario. Card data/images are genuine TCGdex snapshots,
-  with checksums and provenance under apps/api/fixtures/tcgdex. No network is
-  needed. Later renewable lots reuse the previous persisted snapshot/image.
-  Initial funding is written once to the wallet ledger. No synthetic bids are
-  created. Use both bidders to bid, overbid, check released funds and audit.
-  The auctioneer can publish a short separate lot to evaluate settlement quickly.
+Routes include: /, /auctions, /auctions/:auctionId, /login, /register, /wallet, /participations,
+/my-auctions, /auctions/new, /auctions/:auctionId/audit and /receipts/:receiptId.
+During development only, /design-system documents actual reusable buttons, fields, cards,
+dialogs, notifications and status components in light/dark modes. Its route and footer link
+are excluded from production builds. A sun/moon button toggles the saved theme; dark is the default.
+App only composes routed views.
+Audit verdicts and final hashes come from the server. No preview controls or fabricated
+hashes are used in public audit or receipt views.
 
-  A renewable lot spans a fixed 24-hour UTC window (00:00 to next 00:00), so
-  the first day's remaining duration depends on when the seed runs. At most one
-  is created per UTC day and one can be OPEN. Cancellation does not create a
-  replacement on the same day. Anti-sniping across midnight postpones rotation
-  until the old lot settles. All previous history remains available.
-  Startup after missed days settles the previous lot and opens only today's lot;
-  it does not backfill missed days or reset demo accounts. Existing unresolved
-  settlement/audit failures stop rotation and are logged without private data.
-  Native timers follow deadlines; failures retry after 1s/5s/30s, then 15 minutes.
-  No minute-by-minute database polling or external scheduling service is used.
-  Deploy must preserve PostgreSQL and signing keys, and include apps/api/fixtures
-  alongside dist. The seed CLI starts no HTTP server or background scheduler.
+Frontend checks: npm run test:web, npm run build:web, npm run typecheck and npm run lint.
+Frontend tests cover money, mutation recovery, permissions, HTTP contracts and connection
+lifecycle. npm run check also exercises the real API/PostgreSQL/WebSocket integration suites.
 
-Verificação integrada antes de publicar (BE-16)
+Frontend e autenticação
+-------------------------------------
+    npm run dev:web
+
+Abra http://127.0.0.1:5173. Use essa mesma origem em WEB_ORIGIN da API.
+VITE_API_URL recebe a origem do backend (padrão http://127.0.0.1:3000);
+um sufixo /api/v1 legado também é aceito. Se outra aplicação ocupar a porta
+3000, ajuste PORT da API e VITE_API_URL de forma consistente. O arquivo
+apps/web/.env contém apenas configuração pública e é ignorado pelo Git.
+
+Cadastro cria BIDDER; login usa o papel retornado pela API. Access token
+fica em memória; refresh HttpOnly usa /api/v1/auth na origem do frontend.
+Rotação/logout são serializados com Web Locks entre abas. O marcador local
+de saída não contém token, senha ou identificação pessoal. Navegadores
+modernos com Web Locks suportam a coordenação entre abas; o fallback
+serializa somente operações da própria aba.
+
+Login, cadastro, refresh, consulta de usuário e logout estão integrados.
+O estado atual das demais views está descrito no início deste arquivo.
+
+    npm run test:web
+    npm run test:auth
+
+O segundo comando cria dois bancos descartáveis e uma API NestJS real,
+executando os services/controlador de sessão do frontend por HTTP. Não lê
+URLs externas nem usa o Neon. Faz parte de npm run check, inclusive no
+Docker/Northflank e no GitHub Actions. Docker é o padrão local; o modo
+HOLOBID_TEST_DATABASE_MODE=process requer PostgreSQL 16 no PATH.
+
+Integração da vitrine
+--------------------
+    npm run test:auctions
+
+Executa os serviços HTTP e as opções de paginação do frontend contra NestJS
+compilado e PostgreSQL descartável. O upstream TCGdex é controlado apenas no
+processo de teste para reproduzir estados, cancelamento e indisponibilidade.
+Incluído em npm run check e, portanto, no estágio checks do Docker/Northflank.
+
+Publicação pelo frontend
+-----------------------
+A busca do catálogo tem debounce, paginação e cancelamento de consultas antigas.
+A seleção carrega atributos da carta antes de permitir publicação. Datas do
+navegador são enviadas como UTC; dinheiro é convertido para centavos inteiros.
+Somente externalItemId, preços e datas são enviados para criar o lote.
+
+Um envio pendente mantém sua chave e payload em sessionStorage, separados por
+conta e aba, sem salvar tokens. Duplo clique compartilha a mesma requisição.
+Após resposta incerta, 202 ou reload, “Consultar publicação” repete a mesma
+operação. Dados ficam bloqueados até confirmação; erros definitivos permitem
+corrigir o formulário. O sucesso invalida a vitrine e abre acesso ao lote real.
+O backend continua responsável por autorização, validação e idempotência.
+
+npm run test:auctions também cobre catálogo indisponível, valores/datas inválidos,
+permissões, duplo envio, resposta perdida depois do commit e 202 real por falha
+de confirmação no banco de auditoria. Injeções de falhas só existem no preload
+do processo de testes e não são importadas pela aplicação.
+
+Frontend realtime acceptance
+----------------------------------
+  npm run test:realtime
+  Starts fresh PostgreSQL databases and the real NestJS API. Two separate client
+  sessions use real WebSocket transports with polling disabled in the tests.
+  Covers subscription ACK, bids, wallet/position updates, private isolation,
+  transport loss, missed notifications, token refresh/expiry, remote revocation
+  and subscription cleanup. Included in npm run check and the Docker checks stage.
+
+Carteira integrada
+-------------------------
+/wallet usa GET /wallet e GET /me/participations?filter=all, com paginação
+para reservas. Total, reservado e disponível vêm do servidor; a lista paginada
+não calcula os totais globais. A sala compartilha a mesma consulta de carteira.
+
+POST /wallet/deposits recebe centavos inteiros e Idempotency-Key. A chave e o
+valor ficam em sessionStorage por conta/aba até confirmação. Envio duplo é
+coalescido; resposta perdida permite consultar exatamente a mesma operação.
+Replay não aplica um saldo antigo: a tela refaz GET /wallet. wallet.updated e
+participation.updated invalidam saldos e reservas; foco/refetch de 30s são fallback.
+O depósito é simulado e nunca inicia pagamento real.
+
+npm run test:realtime inclui depósitos, perda de resposta, replay, reservas em
+dois lotes, superação e liquidação, com HTTP e WebSocket reais e bancos isolados.
+
+Participações e comprovantes
+-----------------------------------
+/participations usa paginação e filtros active/all/won da API. Mudanças de posição
+chegam por participation.updated; reconexão, foco e refetch de 30s reconciliam o
+estado. Contagens de uma página não são apresentadas como totais globais.
+PROCESSING/FAILED nunca liberam um comprovante. Reservas ainda pendentes após o
+prazo permanecem visíveis na carteira, mesmo fora do filtro active.
+
+/receipts/:receiptId consulta publicamente o snapshot emitido na liquidação:
+valor, pseudônimo, carta, mídia persistida, data e hash final. O documento conserva
+o resultado da emissão; a auditoria tem a verificação atual. O link compartilhado
+não contém parâmetros privados e possui alternativa para cópia manual.
+
+npm run test:realtime cobre filtros/cursors privados, estados leading/outbid/
+processing/won/lost, reconexão, liquidação, comprovante anônimo sem Authorization,
+404/503, mídia persistida e indisponibilidade do catálogo externo.
+
+Auditoria pública integrada
+---------------------------------
+/auctions/:auctionId/audit usa a API pública, com paginação por cursor e verificação de toda
+a cadeia a cada consulta no servidor. VERIFIED, TAMPERED e INCOMPLETE são distintos.
+A página apresenta checkedAt, contagens esperada/real, verifiedThroughSequence,
+firstInvalidSequence quando informado e headHash quando disponível. Nenhum hash
+por lance é inventado: o contrato público expõe o hash final da verificação.
+
+Mudanças do lote invalidam a auditoria via Socket.IO; foco e consulta de 30s são
+fallback. Consulta HTTP funciona mesmo sem inscrição WebSocket. Durante refetch ou
+falha de rede, dados anteriores não conservam um selo de verificação atual. Lotes
+cancelados mantêm auditoria; 404 e cursor inválido têm recuperação explícita.
+O link JSON abre a mesma página pública da API, sem autenticação.
+
+npm run test:realtime testa adulteração/restauração de lance antigo fora da página
+visível, âncora com chave indisponível (INCOMPLETE), histórico vazio/cancelado,
+reconexão, evento de lance, perda da resposta e privacidade. Apenas bases efêmeras
+são modificadas. A inspeção manual no navegador é uma validação separada.
+
+06. Testes e CI
+---------------
+
+Verificações antes de cada commit
+--------------------------------
+    npm run check
+    git diff --check
+    git diff --cached --check
+
+check executa formatação, lint, typecheck, builds, testes de frontend/API,
+HTTP e PostgreSQL com WebSocket, parando na primeira falha. Docker precisa
+estar em execução. Corrija falhas antes de commitar e valide novamente se
+alterar código após os checks. Essa é uma etapa manual, sem hook instalado.
+
+Na primeira instalação, após alterar dependências/lockfile e antes de
+concluir cada PR, rode npm ci antes de npm run check. Comandos individuais:
+
+    npm run lint
+    npm run typecheck
+    npm run build
+    npm run test:api
+    npm run test:db
+    npm run build:api
+    npm run build:web
+
+test:api executa Jest/Supertest com a configuração HTTP real e providers
+substitutos somente para conectividade. As rotas _test existem apenas nos
+testes. test:db cria dois containers exclusivos com nomes aleatórios, portas locais
+dinâmicas e dados em memória (ou usa os serviços efêmeros do job no CI). Aplica as migrations em bases vazias, repete
+para verificar idempotência e testa constraints, concorrência de reservas,
+rollback entre repositories, isolamento de credenciais e readiness.
+O runner ignora URLs externas/.env e remove seus próprios containers ao final;
+não limpa volumes nem acessa bases existentes. A primeira execução pode
+baixar a imagem postgres:16-alpine. Não pula os testes se Docker faltar.
+Registre no PR os resultados reais e os cenários manuais da task.
+
+O GitHub Actions chama npm ci e o mesmo npm run check. Enquanto sua execução
+estiver indisponível, a validação local permanece obrigatória; ela não
+reproduz o ambiente Linux do runner.
+
+Verificação integrada antes de publicar
 ----------------------------------------------
     npm ci
     npm run check
@@ -664,36 +880,48 @@ status, códigos e duração; omite tokens, cookies e corpos de credenciais.
 GitHub Actions está configurado com dois serviços PostgreSQL efêmeros,
 sem secrets do deploy. A mesma sequência npm run check é obrigatória
 localmente antes de commitar. Configuração de CI não significa execução
-verde: enquanto a conta bloquear Actions, o resultado é somente local.
+verde: se o workflow não executar, não registrar seus testes como aprovados.
 
 Limites desta validação: não comprova telas React, CORS/rewrite no host
 real, HTTPS público, quotas da conta, avaliação visual ou o formulário de
 entrega. Repetir o smoke no deploy depois da configuração das contas.
 
-Formatação do código
---------------------
+Browser journeys and accessibility
 
-Regras versionadas em prettier.config.mjs, .prettierignore, eslint.config.mjs
-e .editorconfig. Para aplicar o padrão ou apenas verificar:
+    npx playwright install chromium
+    npm run test:e2e
 
-    npm run format
-    npm run format:check
-    npm run lint
+The root runner builds the API and frontend, creates two disposable PostgreSQL
+instances, applies migrations twice, and serves the production web build with
+its same-origin auth proxy. It ignores database URLs from your shell/.env and
+refuses remote database hosts. Docker is the default; the existing
+HOLOBID_TEST_DATABASE_MODE=process option also works with local PostgreSQL tools.
+Do not launch the workspace Playwright command directly.
 
-Prettier usa dois espaços, aspas simples, ponto e vírgula, largura de 100
-colunas e quebra de linha LF. ESLint separa grupos de imports (efeitos
-colaterais, Node, bibliotecas, workspace, diretório pai e diretório atual),
-declarações, funções, métodos e blocos. Condicionais usam chaves e cada
-variável tem sua própria declaração. Declarações consecutivas podem ficar
-juntas quando formam um grupo; os grupos ficam separados do código seguinte.
+Browser scenarios exercise independent seller, bidder A, bidder B and
+visitor contexts: publication, validation, bids, anti-sniping, reserve release,
+reconnect, settlement, receipt, audit tampering/incomplete verification, lost
+POST response recovery, session reload/logout, keyboard dialogs and both themes
+at 375px and desktop. axe checks WCAG A/AA rules; this is not a substitute for
+manual screen-reader, zoom and visual review. TCGdex/time/failures are controlled
+in the API test preload; application HTTP, Socket.IO, UI and databases are real.
+The room-loading journey delays real WebSocket delivery, confirms that public
+content renders first, places a competing bid before subscription and holds the
+verification GET. Bidding stays blocked until that fresh read completes; the
+next bid then updates the other browser through the real socket.
 
-npm run format aplica ESLint --fix e depois Prettier. npm run check verifica
-formatação sem alterar arquivos, tanto no GitHub quanto no build Northflank.
-Clientes Prisma gerados, fixtures com checksum, migrations aplicadas,
-lockfile, segredos e documentos locais não são reformatados pelo Prettier.
-No editor, use a extensão Prettier e a configuração local deste projeto.
+These checks use local HTTP (NODE_ENV=development) so the real settlement worker
+runs while the test preload controls its clock. Secure-cookie behavior belongs
+to the separate HTTPS deployment check. Never point this runner at production.
+Reports/screenshots are ignored. Traces containing credentials are disabled.
+The browser CI job runs only for public repositories on standard GitHub runners;
+it does not add a paid service or install Chromium in the Northflank API image.
+The existing npm run check gate remains separate from npm run test:e2e.
 
-Deploy da API com Docker (BE-17)
+07. Deploy
+----------
+
+Deploy da API com Docker
 -------------------------------
 Build context: raiz do monorepo. Dockerfile: apps/api/Dockerfile.
 Node 24.22.1 Debian slim tem digest fixado; build usa npm 11.21.1 e lockfile.
@@ -756,8 +984,8 @@ Northflank Developer Sandbox, combinado com Neon Free:
     intervalo 60 s, delay 5 s. Não despertar Neon com probes de banco.
   - /api/v1/health/ready testa os dois bancos; usar manualmente no release.
     Scale-to-zero do Neon pode causar 503 transitório no primeiro acesso.
-  - WEB_ORIGIN deve ser a origem HTTPS exata do frontend, sem barra final.
-    Até o frontend existir, está configurado para a própria origem da API.
+  - WEB_ORIGIN=https://holobid.vercel.app, sem barra final. Use a origem
+    HTTPS correspondente se hospedar outro frontend.
   - Sem Redis, réplicas extras, GPU, domínio pago ou upgrade de plano.
 
 API: https://holobid--meiraitt--fmvj6fdxbbcx.code.run/api/v1
@@ -787,180 +1015,7 @@ confirma saldos, sessões, recibo, auditoria e WebSocket após o restart, por
 até oito minutos. O relatório omite senhas, cookies e tokens. Sem essa flag,
 o relatório indica explicitamente que restart não foi validado.
 
-Frontend application
-
-Run npm ci and npm run dev:web, then open http://localhost:5173.
-The React/Vite application uses Tailwind and locally customized shadcn/Base UI components.
-Authentication, auctions, bidding, wallet and auctioneer management use the real API.
-Public receipts and audit reports use server data. Simulated money persists on the backend;
-pending mutations are journaled per account in sessionStorage. Never use real payment details.
-
-Routes include: /, /auctions, /auctions/:auctionId, /login, /register, /wallet, /participations,
-/my-auctions, /auctions/new, /auctions/:auctionId/audit and /receipts/:receiptId.
-During development only, /design-system documents actual reusable buttons, fields, cards,
-dialogs, notifications and status components in light/dark modes. Its route and footer link
-are excluded from production builds. A sun/moon button toggles the saved theme; dark is the default.
-App only composes routed views.
-Audit verdicts and final hashes come from the server. No preview controls or fabricated
-hashes are used in public audit or receipt views.
-
-Frontend checks: npm run test:web, npm run build:web, npm run typecheck and npm run lint.
-Frontend tests cover money, mutation recovery, permissions, HTTP contracts and connection
-lifecycle. npm run check also exercises the real API/PostgreSQL/WebSocket integration suites.
-
-Frontend e autenticação (FE-02 / FE-04)
--------------------------------------
-    npm run dev:web
-
-Abra http://127.0.0.1:5173. Use essa mesma origem em WEB_ORIGIN da API.
-VITE_API_URL recebe a origem do backend (padrão http://127.0.0.1:3000);
-um sufixo /api/v1 legado também é aceito. Se outra aplicação ocupar a porta
-3000, ajuste PORT da API e VITE_API_URL de forma consistente. O arquivo
-apps/web/.env contém apenas configuração pública e é ignorado pelo Git.
-
-Cadastro cria BIDDER; login usa o papel retornado pela API. Access token
-fica em memória; refresh HttpOnly usa /api/v1/auth na origem do frontend.
-Rotação/logout são serializados com Web Locks entre abas. O marcador local
-de saída não contém token, senha ou identificação pessoal. Navegadores
-modernos com Web Locks suportam a coordenação entre abas; o fallback
-serializa somente operações da própria aba.
-
-Login, cadastro, refresh, consulta de usuário e logout estão integrados.
-O estado atual das demais views está descrito no início deste arquivo.
-
-    npm run test:web
-    npm run test:auth
-
-O segundo comando cria dois bancos descartáveis e uma API NestJS real,
-executando os services/controlador de sessão do frontend por HTTP. Não lê
-URLs externas nem usa o Neon. Faz parte de npm run check, inclusive no
-Docker/Northflank e no GitHub Actions. Docker é o padrão local; o modo
-HOLOBID_TEST_DATABASE_MODE=process requer PostgreSQL 16 no PATH.
-
-Integração da vitrine
---------------------
-    npm run test:auctions
-
-Executa os serviços HTTP e as opções de paginação do frontend contra NestJS
-compilado e PostgreSQL descartável. O upstream TCGdex é controlado apenas no
-processo de teste para reproduzir estados, cancelamento e indisponibilidade.
-Incluído em npm run check e, portanto, no estágio checks do Docker/Northflank.
-
-Publicação pelo frontend
------------------------
-A busca do catálogo tem debounce, paginação e cancelamento de consultas antigas.
-A seleção carrega atributos da carta antes de permitir publicação. Datas do
-navegador são enviadas como UTC; dinheiro é convertido para centavos inteiros.
-Somente externalItemId, preços e datas são enviados para criar o lote.
-
-Um envio pendente mantém sua chave e payload em sessionStorage, separados por
-conta e aba, sem salvar tokens. Duplo clique compartilha a mesma requisição.
-Após resposta incerta, 202 ou reload, “Consultar publicação” repete a mesma
-operação. Dados ficam bloqueados até confirmação; erros definitivos permitem
-corrigir o formulário. O sucesso invalida a vitrine e abre acesso ao lote real.
-O backend continua responsável por autorização, validação e idempotência.
-
-npm run test:auctions também cobre catálogo indisponível, valores/datas inválidos,
-permissões, duplo envio, resposta perdida depois do commit e 202 real por falha
-de confirmação no banco de auditoria. Injeções de falhas só existem no preload
-do processo de testes e não são importadas pela aplicação.
-
-Frontend realtime acceptance (FE-09)
-----------------------------------
-  npm run test:realtime
-  Starts fresh PostgreSQL databases and the real NestJS API. Two separate client
-  sessions use real WebSocket transports with polling disabled in the tests.
-  Covers subscription ACK, bids, wallet/position updates, private isolation,
-  transport loss, missed notifications, token refresh/expiry, remote revocation
-  and subscription cleanup. Included in npm run check and the Docker checks stage.
-
-Carteira integrada (FE-10)
--------------------------
-/wallet usa GET /wallet e GET /me/participations?filter=all, com paginação
-para reservas. Total, reservado e disponível vêm do servidor; a lista paginada
-não calcula os totais globais. A sala compartilha a mesma consulta de carteira.
-
-POST /wallet/deposits recebe centavos inteiros e Idempotency-Key. A chave e o
-valor ficam em sessionStorage por conta/aba até confirmação. Envio duplo é
-coalescido; resposta perdida permite consultar exatamente a mesma operação.
-Replay não aplica um saldo antigo: a tela refaz GET /wallet. wallet.updated e
-participation.updated invalidam saldos e reservas; foco/refetch de 30s são fallback.
-O depósito é simulado e nunca inicia pagamento real.
-
-npm run test:realtime inclui depósitos, perda de resposta, replay, reservas em
-dois lotes, superação e liquidação, com HTTP e WebSocket reais e bancos isolados.
-
-Participações e comprovantes (FE-11)
------------------------------------
-/participations usa paginação e filtros active/all/won da API. Mudanças de posição
-chegam por participation.updated; reconexão, foco e refetch de 30s reconciliam o
-estado. Contagens de uma página não são apresentadas como totais globais.
-PROCESSING/FAILED nunca liberam um comprovante. Reservas ainda pendentes após o
-prazo permanecem visíveis na carteira, mesmo fora do filtro active.
-
-/receipts/:receiptId consulta publicamente o snapshot emitido na liquidação:
-valor, pseudônimo, carta, mídia persistida, data e hash final. O documento conserva
-o resultado da emissão; a auditoria tem a verificação atual. O link compartilhado
-não contém parâmetros privados e possui alternativa para cópia manual.
-
-npm run test:realtime cobre filtros/cursors privados, estados leading/outbid/
-processing/won/lost, reconexão, liquidação, comprovante anônimo sem Authorization,
-404/503, mídia persistida e indisponibilidade do catálogo externo.
-
-Auditoria pública integrada (FE-12)
----------------------------------
-/auctions/:auctionId/audit usa E24, com paginação por cursor e verificação de toda
-a cadeia a cada consulta no servidor. VERIFIED, TAMPERED e INCOMPLETE são distintos.
-A página apresenta checkedAt, contagens esperada/real, verifiedThroughSequence,
-firstInvalidSequence quando informado e headHash quando disponível. Nenhum hash
-por lance é inventado: o contrato público expõe o hash final da verificação.
-
-Mudanças do lote invalidam a auditoria via Socket.IO; foco e consulta de 30s são
-fallback. Consulta HTTP funciona mesmo sem inscrição WebSocket. Durante refetch ou
-falha de rede, dados anteriores não conservam um selo de verificação atual. Lotes
-cancelados mantêm auditoria; 404 e cursor inválido têm recuperação explícita.
-O link JSON abre a mesma página pública da API, sem autenticação.
-
-npm run test:realtime testa adulteração/restauração de lance antigo fora da página
-visível, âncora com chave indisponível (INCOMPLETE), histórico vazio/cancelado,
-reconexão, evento de lance, perda da resposta e privacidade. Apenas bases efêmeras
-são modificadas. A inspeção manual no navegador é uma validação separada.
-
-
-Browser journeys and accessibility (FE-13)
-
-    npx playwright install chromium
-    npm run test:e2e
-
-The root runner builds the API and frontend, creates two disposable PostgreSQL
-instances, applies migrations twice, and serves the production web build with
-its same-origin auth proxy. It ignores database URLs from your shell/.env and
-refuses remote database hosts. Docker is the default; the existing
-HOLOBID_TEST_DATABASE_MODE=process option also works with local PostgreSQL tools.
-Do not launch the workspace Playwright command directly.
-
-Browser scenarios exercise independent seller, bidder A, bidder B and
-visitor contexts: publication, validation, bids, anti-sniping, reserve release,
-reconnect, settlement, receipt, audit tampering/incomplete verification, lost
-POST response recovery, session reload/logout, keyboard dialogs and both themes
-at 375px and desktop. axe checks WCAG A/AA rules; this is not a substitute for
-manual screen-reader, zoom and visual review. TCGdex/time/failures are controlled
-in the API test preload; application HTTP, Socket.IO, UI and databases are real.
-The room-loading journey delays real WebSocket delivery, confirms that public
-content renders first, places a competing bid before subscription and holds the
-verification GET. Bidding stays blocked until that fresh read completes; the
-next bid then updates the other browser through the real socket.
-
-These checks use local HTTP (NODE_ENV=development) so the real settlement worker
-runs while the test preload controls its clock. Secure-cookie behavior belongs
-to the separate HTTPS deployment check. Never point this runner at production.
-Reports/screenshots are ignored. Traces containing credentials are disabled.
-The browser CI job runs only for public repositories on standard GitHub runners;
-it does not add a paid service or install Chromium in the Northflank API image.
-The existing npm run check gate remains separate from npm run test:e2e.
-
-
-Separate frontend deployment (FE-14)
+Separate frontend deployment
 
 Public frontend: https://holobid.vercel.app
 Public API: https://holobid--meiraitt--fmvj6fdxbbcx.code.run/api/v1
@@ -1016,13 +1071,9 @@ server time or tampers with production history. Reports/screenshots stay in the
 ignored apps/web/test-results/release directory. This write-enabled acceptance
 is manual and is never run automatically in GitHub, Northflank or Vercel builds.
 
-Acceptance on 2026-10-28 passed: 12 read-only HTTPS probes plus public WebSocket;
-5 browser release steps (155 HTTP requests, 4 auction events, no uncaught browser
-errors); and 12 API financial checks (61 HTTP requests), including settlement
-with all clients disconnected. The independent API check confirmed the winner's
-debit, the loser's released reserve and the exact seller credit. Vercel Hobby,
-Northflank Free and the existing Neon databases remain in use. Production tracks
-main; preview origins are intentionally not trusted for authentication.
+Resultados de uma rodada anterior não substituem a verificação do release
+atual. Confirme o commit publicado e registre quais fluxos foram executados.
+Lighthouse é uma medição complementar, não uma prova de correção financeira.
 
 Rollback: promote the previous frontend deployment, keeping a backend with
 compatible contracts and the same WEB_ORIGIN. No frontend deploy should reset
@@ -1032,3 +1083,44 @@ Official configuration references:
 https://vercel.com/docs/project-configuration/vercel-json
 https://vercel.com/docs/routing/rewrites
 https://vercel.com/docs/plans/hobby
+
+08. Desenvolvimento
+-------------------
+
+Formatação do código
+--------------------
+
+Regras versionadas em prettier.config.mjs, .prettierignore, eslint.config.mjs
+e .editorconfig. Para aplicar o padrão ou apenas verificar:
+
+    npm run format
+    npm run format:check
+    npm run lint
+
+Prettier usa dois espaços, aspas simples, ponto e vírgula, largura de 100
+colunas e quebra de linha LF. ESLint separa grupos de imports (efeitos
+colaterais, Node, bibliotecas, workspace, diretório pai e diretório atual),
+declarações, funções, métodos e blocos. Condicionais usam chaves e cada
+variável tem sua própria declaração. Declarações consecutivas podem ficar
+juntas quando formam um grupo; os grupos ficam separados do código seguinte.
+
+npm run format aplica ESLint --fix e depois Prettier. npm run check verifica
+formatação sem alterar arquivos, tanto no GitHub quanto no build Northflank.
+Clientes Prisma gerados, fixtures com checksum, migrations aplicadas,
+lockfile, segredos e documentos locais não são reformatados pelo Prettier.
+No editor, use a extensão Prettier e a configuração local deste projeto.
+
+Dependências
+------------
+NestJS 11 mantém compatibilidade com CommonJS. O override de multer para
+2.5.0 corrige a dependência 2.4.0 do adapter Express; reavaliar esse override
+quando o adapter incorporar a correção. Referência:
+https://github.com/advisories/GHSA-q7qp-rjg7-q26m
+Não há upload de arquivos neste escopo.
+
+Contribuição
+------------
+Cada task possui branch, commit(s) e PR próprios, com títulos e descrições
+em inglês. Planos Markdown, .env reais, dependências e arquivos gerados
+ficam fora do Git. Este README e templates .env.example são versionados.
+A visibilidade é controlada pelo proprietário; este arquivo não a altera.
