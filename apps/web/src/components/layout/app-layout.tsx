@@ -1,5 +1,5 @@
-import { ArrowRight, Layers2, LogOut, Menu } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { ArrowRight, Layers2, LogOut, Menu, X } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 
 import { cn } from '../../lib/utils';
@@ -8,7 +8,6 @@ import { useRealtime } from '../../providers/realtime-provider';
 import { ThemeToggle } from '../../providers/theme-provider';
 import { errorMessage } from '../../services/api-error';
 import { Button, buttonVariants } from '../ui/button';
-import { Modal } from '../ui/dialog';
 import { toast } from '../ui/toast';
 
 export function AppLayout() {
@@ -18,8 +17,14 @@ export function AppLayout() {
   const [logoutError, setLogoutError] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
+  const menuId = useId();
+  const menuPanel = useRef<HTMLDivElement>(null);
+  const menuTrigger = useRef<HTMLButtonElement>(null);
   const main = useRef<HTMLElement>(null);
   const lastPath = useRef(location.pathname);
+  const needsLiveUpdates =
+    location.pathname !== '/auctions/new' &&
+    /^\/(auctions(?:\/[^/]+)?|my-auctions|participations|wallet)\/?$/.test(location.pathname);
   const nav =
     user?.role === 'AUCTIONEER'
       ? [
@@ -34,12 +39,59 @@ export function AppLayout() {
         ];
 
   useEffect(() => {
+    setMenuOpen(false);
+  }, [location.key]);
+
+  useEffect(() => {
     if (lastPath.current !== location.pathname) {
       window.scrollTo(0, 0);
       main.current?.focus({ preventScroll: true });
       lastPath.current = location.pathname;
     }
   }, [location.pathname]);
+
+  useEffect(() => {
+    if (!menuOpen) {
+      return;
+    }
+
+    function closeOutside(event: PointerEvent | FocusEvent) {
+      if (
+        event.target instanceof Node &&
+        !menuPanel.current?.contains(event.target) &&
+        !menuTrigger.current?.contains(event.target)
+      ) {
+        setMenuOpen(false);
+      }
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMenuOpen(false);
+        menuTrigger.current?.focus({ preventScroll: true });
+      }
+    }
+
+    const desktop = window.matchMedia('(min-width: 1024px)');
+    const closeOnDesktop = () => {
+      if (desktop.matches) {
+        setMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', closeOutside);
+    document.addEventListener('focusin', closeOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    desktop.addEventListener('change', closeOnDesktop);
+
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside);
+      document.removeEventListener('focusin', closeOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+      desktop.removeEventListener('change', closeOnDesktop);
+    };
+  }, [menuOpen]);
 
   async function handleLogout() {
     if (loggingOut) {
@@ -72,7 +124,7 @@ export function AppLayout() {
         onClick={close}
         className={({ isActive }) =>
           cn(
-            'flex min-h-12 items-center border-b-2 px-3 font-semibold',
+            'flex min-h-12 items-center border-b-2 px-3 font-semibold transition-colors duration-200 motion-reduce:transition-none',
             isActive
               ? 'border-primary text-foreground'
               : 'border-transparent text-muted-foreground hover:text-foreground',
@@ -87,18 +139,11 @@ export function AppLayout() {
     <>
       <a
         href="#main-content"
-        className="sr-only fixed left-4 top-3 z-[90] rounded-sm bg-primary px-4 py-3 text-primary-foreground focus:not-sr-only"
+        className="sr-only left-4 top-3 z-[90] rounded-sm bg-primary text-primary-foreground focus-visible:not-sr-only focus-visible:fixed focus-visible:px-4 focus-visible:py-3"
       >
         Ir para o conteúdo
       </a>
-      <div className="no-print border-b bg-muted/70">
-        <div className="page-container flex min-h-9 flex-wrap items-center justify-between gap-x-4 gap-y-1 py-1 text-xs text-muted-foreground">
-          <span>
-            Ambiente demonstrativo · Valores simulados · Dados e verificações consultados na API
-          </span>
-        </div>
-      </div>
-      {['disconnected', 'unavailable'].includes(realtime.phase) && (
+      {needsLiveUpdates && ['disconnected', 'unavailable'].includes(realtime.phase) && (
         <div
           role="status"
           className="page-container flex flex-wrap items-center gap-3 border-b py-3 text-sm text-warning"
@@ -109,7 +154,7 @@ export function AppLayout() {
           </Button>
         </div>
       )}
-      <header className="border-b">
+      <header className="relative z-40 border-b bg-background">
         <div className="page-container flex min-h-18 items-center justify-between gap-3">
           <Link
             to="/auctions"
@@ -123,51 +168,124 @@ export function AppLayout() {
             {links()}
           </nav>
           <div className="flex items-center gap-3">
-            {user && (
-              <span
-                className="hidden max-w-48 truncate text-sm text-muted-foreground sm:block"
-                title={user.email}
-              >
-                {user.email}
-              </span>
-            )}
+            <span
+              className="hidden w-40 truncate text-right text-sm text-muted-foreground xl:block"
+              title={user?.email}
+            >
+              {user?.email}
+            </span>
             <ThemeToggle />
-            {user ? (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="hidden lg:flex"
-                aria-label="Sair da conta"
-                loading={loggingOut}
-                onClick={() => void handleLogout()}
-              >
-                <LogOut />
-              </Button>
-            ) : status === 'restoring' ? (
-              <span role="status" className="text-sm">
-                Verificando sessão…
-              </span>
-            ) : (
-              <Link
-                to="/login"
-                className={cn(
-                  buttonVariants({ variant: 'outline', size: 'sm' }),
-                  'hidden sm:inline-flex',
-                )}
-              >
-                Entrar
-                <ArrowRight />
-              </Link>
-            )}
+            <div className="hidden w-24 justify-end sm:flex">
+              {user ? (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="hidden lg:flex"
+                  aria-label="Sair da conta"
+                  loading={loggingOut}
+                  onClick={() => void handleLogout()}
+                >
+                  <LogOut />
+                </Button>
+              ) : status === 'restoring' ? (
+                <span role="status" className="flex h-11 w-24 items-center justify-end">
+                  <span className="sr-only">Verificando sessão…</span>
+                  <span
+                    aria-hidden="true"
+                    className="h-9 w-20 animate-pulse rounded-sm bg-muted motion-reduce:animate-none"
+                  />
+                </span>
+              ) : (
+                <Link to="/login" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+                  Entrar
+                  <ArrowRight />
+                </Link>
+              )}
+            </div>
             <Button
+              ref={menuTrigger}
               variant="ghost"
               size="icon"
-              aria-label="Abrir menu"
-              className="lg:hidden"
-              onClick={() => setMenuOpen(true)}
+              aria-label={menuOpen ? 'Fechar menu' : 'Abrir menu'}
+              aria-expanded={menuOpen}
+              aria-controls={menuId}
+              className="relative lg:hidden"
+              onClick={() => {
+                setMenuOpen((open) => !open);
+                if (menuOpen) {
+                  menuTrigger.current?.focus({ preventScroll: true });
+                }
+              }}
             >
-              <Menu />
+              <Menu
+                aria-hidden="true"
+                className={cn(
+                  'absolute transition-[rotate,scale,opacity] duration-200 motion-reduce:transition-none',
+                  menuOpen ? 'rotate-90 scale-75 opacity-0' : 'rotate-0 scale-100 opacity-100',
+                )}
+              />
+              <X
+                aria-hidden="true"
+                className={cn(
+                  'absolute transition-[rotate,scale,opacity] duration-200 motion-reduce:transition-none',
+                  menuOpen ? 'rotate-0 scale-100 opacity-100' : '-rotate-90 scale-75 opacity-0',
+                )}
+              />
             </Button>
+          </div>
+        </div>
+        <div
+          ref={menuPanel}
+          id={menuId}
+          aria-hidden={!menuOpen}
+          inert={!menuOpen}
+          className={cn(
+            'absolute inset-x-0 top-full grid bg-background transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none lg:hidden',
+            menuOpen
+              ? 'grid-rows-[1fr] border-b opacity-100 shadow-xl shadow-black/10'
+              : 'pointer-events-none grid-rows-[0fr] opacity-0',
+          )}
+        >
+          <div className="min-h-0 overflow-hidden">
+            <nav
+              aria-label="Menu móvel"
+              className="page-container flex max-h-[calc(100dvh-5rem)] flex-col overflow-y-auto py-4"
+            >
+              {links(() => setMenuOpen(false))}
+              <div className="mt-4 border-t pt-4">
+                {user ? (
+                  <>
+                    <p className="truncate px-3 pb-2 text-sm text-muted-foreground">{user.email}</p>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start"
+                      loading={loggingOut}
+                      onClick={() => void handleLogout()}
+                    >
+                      <LogOut />
+                      Sair da conta
+                    </Button>
+                  </>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    <Link
+                      className={buttonVariants({ variant: 'outline' })}
+                      to="/login"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      Entrar
+                    </Link>
+                    <Link
+                      className={buttonVariants()}
+                      to="/register"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      Criar conta
+                    </Link>
+                  </div>
+                )}
+              </div>
+            </nav>
           </div>
         </div>
       </header>
@@ -201,40 +319,6 @@ export function AppLayout() {
           </div>
         </div>
       </footer>
-      <Modal open={menuOpen} onOpenChange={setMenuOpen} title="Navegação">
-        <nav aria-label="Menu móvel" className="flex flex-col">
-          {links(() => setMenuOpen(false))}
-          {!user && (
-            <>
-              <Link
-                className="min-h-12 py-3 font-semibold"
-                to="/login"
-                onClick={() => setMenuOpen(false)}
-              >
-                Entrar
-              </Link>
-              <Link
-                className="min-h-12 py-3 font-semibold"
-                to="/register"
-                onClick={() => setMenuOpen(false)}
-              >
-                Criar conta
-              </Link>
-            </>
-          )}
-          {user && (
-            <Button
-              variant="ghost"
-              className="mt-4 justify-start"
-              loading={loggingOut}
-              onClick={() => void handleLogout()}
-            >
-              <LogOut />
-              Sair da conta
-            </Button>
-          )}
-        </nav>
-      </Modal>
     </>
   );
 }

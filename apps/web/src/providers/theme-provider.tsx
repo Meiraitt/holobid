@@ -2,6 +2,7 @@ import { Moon, Sun } from 'lucide-react';
 import { createContext, type ReactNode, useContext, useEffect, useState } from 'react';
 
 import { Button } from '../components/ui/button';
+import { cn } from '../lib/utils';
 
 type Theme = 'dark' | 'light';
 
@@ -41,14 +42,27 @@ export function ThemeToggle() {
 
   return (
     <Button
-      variant="outline"
+      variant="ghost"
       size="icon"
-      className="rounded-full dark:text-primary [&_svg]:size-5"
+      className="relative overflow-hidden rounded-full border-0 [&_svg]:size-5"
       aria-label={label}
       title={label}
       onClick={() => value.setTheme(isDark ? 'light' : 'dark')}
     >
-      {isDark ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
+      <Sun
+        aria-hidden="true"
+        className={cn(
+          'absolute transition-[rotate,scale,opacity] duration-300 ease-out motion-reduce:transition-none',
+          isDark ? 'rotate-0 scale-100 opacity-100' : 'rotate-90 scale-50 opacity-0',
+        )}
+      />
+      <Moon
+        aria-hidden="true"
+        className={cn(
+          'absolute transition-[rotate,scale,opacity] duration-300 ease-out motion-reduce:transition-none',
+          isDark ? '-rotate-90 scale-50 opacity-0' : 'rotate-0 scale-100 opacity-100',
+        )}
+      />
     </Button>
   );
 }
