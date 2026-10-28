@@ -415,8 +415,8 @@ export class RealtimeClient {
 
     let failed = false;
 
-    // Events received during a GET schedule another pass. Cancelling prior reads also
-    // closes the subscribe/initial-snapshot race; no event payload becomes balance data.
+    // Events received during a GET schedule another pass. Every synchronization still
+    // requires a fresh HTTP snapshot after subscription; event payloads are never balances.
     while (this.pending.size && current()) {
       const queued = [...this.pending.values()];
       const keys = queued.filter(
@@ -429,16 +429,37 @@ export class RealtimeClient {
       );
 
       this.pending.clear();
-      await Promise.all(keys.map((queryKey) => this.cache.cancelQueries({ queryKey })));
+
+      const queries = [
+        ...new Set(keys.flatMap((queryKey) => this.cache.getQueryCache().findAll({ queryKey }))),
+      ];
+
+      await Promise.all(
+        queries.map(async (query) => {
+          const filter = { queryKey: query.queryKey, exact: true };
+          const initialDashboardRead =
+            query.queryKey[0] === 'private' &&
+            query.queryKey[2] === 'owned-auctions' &&
+            query.state.data === undefined &&
+            query.state.fetchStatus === 'fetching';
+
+          if (initialDashboardRead) {
+            // Let the read-only list paint its first response and start loading artwork.
+            // Revalidate afterwards; readiness must not trust a pre-subscription snapshot.
+            await query.promise?.catch(() => {});
+          } else {
+            await this.cache.cancelQueries(filter);
+          }
+
+          if (current()) {
+            await this.cache.invalidateQueries(filter, { cancelRefetch: false });
+          }
+        }),
+      );
+
       if (!current()) {
         return;
       }
-
-      await Promise.all(
-        keys.map((queryKey) =>
-          this.cache.invalidateQueries({ queryKey }, { cancelRefetch: false }),
-        ),
-      );
 
       // A missing page is not a broken socket. Inspect active query failures separately so
       // an expected 404 cannot hide a failed wallet/room refresh in the same synchronization.

@@ -11,6 +11,8 @@ import { Brand } from '../shared/brand';
 import { Button, buttonVariants } from '../ui/button';
 import { toast } from '../ui/toast';
 
+import { RouteBoundary } from './route-boundary';
+
 export function AppLayout() {
   const { user, status, logout } = useAuth();
   const realtime = useRealtime();
@@ -303,7 +305,9 @@ export function AppLayout() {
         tabIndex={-1}
         className="page-container min-h-[70dvh] py-8 outline-none sm:py-12"
       >
-        <Outlet key={user?.id ?? 'visitor'} />
+        <RouteBoundary key={user?.id ?? 'visitor'}>
+          <Outlet />
+        </RouteBoundary>
       </main>
       <footer className="mt-8 border-t">
         <div className="page-container flex flex-col justify-between gap-4 py-7 text-sm text-muted-foreground sm:flex-row">
