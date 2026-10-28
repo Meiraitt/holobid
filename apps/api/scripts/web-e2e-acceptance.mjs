@@ -16,12 +16,14 @@ const port = probe.address().port;
 await new Promise((resolve) => probe.close(resolve));
 
 // Local HTTP only. Production Secure cookies are checked separately on the HTTPS deployment.
-h.env.NODE_ENV = 'test';
+// Development enables the real scheduler while keeping cookies compatible with local HTTP.
+h.env.NODE_ENV = 'development';
 h.env.WEB_ORIGIN = `http://127.0.0.1:${port}`;
 
 const env = {
   ...h.env,
   VITE_API_URL: `http://127.0.0.1:${h.env.PORT}`,
+  VITE_SOCKET_URL: `http://127.0.0.1:${h.env.PORT}`,
   HOLOBID_E2E_ORIGIN: h.env.WEB_ORIGIN,
 };
 let preview;

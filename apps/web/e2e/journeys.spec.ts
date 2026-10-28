@@ -73,6 +73,7 @@ test('seller, two bidders and visitor complete the auction through real HTTP and
     configure({ now: settledLot.rows[0].endsAt.getTime() + 1000, reconcileSettlements: true });
     await expect(b.page.getByText('Carta arrematada por você', { exact: true })).toBeVisible();
     await b.page.goto('/participations');
+    await b.page.getByRole('button', { name: 'Arrematados', exact: true }).click();
 
     const receiptLink = b.page.getByRole('link', { name: /comprovante/i }).first();
 
@@ -191,7 +192,12 @@ test('a committed deposit with a lost response survives reload without double cr
   expect(keys).toHaveLength(2);
   expect(keys[1]).toBe(keys[0]);
   expect((await context.cookies()).some((cookie) => cookie.httpOnly)).toBe(true);
-  await page.getByRole('button', { name: 'Sair da conta', exact: true }).click();
+
+  const logout = page.getByRole('button', { name: 'Sair da conta', exact: true });
+
+  await logout.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('button', { name: 'Sair da conta', exact: true })).toHaveCount(0);
   await page.goto('/wallet');
   await expect(page).toHaveURL(/\/login/);
 });
@@ -242,6 +248,12 @@ test('all views have named controls, both themes and mobile reflow; dialogs work
           await expect(page.locator('html')).toHaveClass(theme === 'dark' ? /dark/ : /^(?!.*dark)/);
           await expect(page.getByText(/^Carregando/)).toHaveCount(0);
           await accessible(page);
+          if (path === '/auctions') {
+            await test.info().attach(`catalog-${width}-${theme}`, {
+              body: await page.screenshot({ fullPage: true }),
+              contentType: 'image/png',
+            });
+          }
         }
       }
     }
