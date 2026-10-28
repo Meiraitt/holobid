@@ -41,7 +41,8 @@
     "test:web": "npm run test --workspace=@holobid/web",
     "test:auth": "npm run build:api && npm run test:auth --workspace=@holobid/api",
     "test:auctions": "npm run build:api && npm run test:auctions --workspace=@holobid/api",
-    "test:realtime": "npm run build:api && npm run test:realtime --workspace=@holobid/api"
+    "test:realtime": "npm run build:api && npm run test:realtime --workspace=@holobid/api",
+    "test:e2e": "npm run build:api && node apps/api/scripts/test-database.mjs --web-e2e"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

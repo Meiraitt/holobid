@@ -7,13 +7,17 @@ import { fileURLToPath, URL } from 'node:url';
 
 import { processDatabases } from './test-postgres-process.mjs';
 
+const e2e = process.argv[2] === '--web-e2e';
 const demo = process.argv[2] === '--tamper-demo';
 const http = ['--http', '--http-live'].includes(process.argv[2]);
 const auth = process.argv[2] === '--auth';
 const realtime = process.argv[2] === '--web-realtime';
 const web = realtime || process.argv[2] === '--web-auctions';
 
-if (process.argv.length > 2 && ((!demo && !http && !auth && !web) || process.argv.length !== 3)) {
+if (
+  process.argv.length > 2 &&
+  ((!demo && !http && !auth && !web && !e2e) || process.argv.length !== 3)
+) {
   throw new Error('Unsupported database runner arguments.');
 }
 
@@ -34,6 +38,7 @@ const ciServices =
   !demo &&
   !auth &&
   !web &&
+  !e2e &&
   process.env.GITHUB_ACTIONS === 'true';
 const names = ciServices
   ? [process.env.HOLOBID_CI_MAIN_CONTAINER, process.env.HOLOBID_CI_AUDIT_CONTAINER]
@@ -176,7 +181,9 @@ try {
     run('npm', ['run', 'db:audit:migrate'], { env });
   }
 
-  if (web) {
+  if (e2e) {
+    run(process.execPath, ['scripts/web-e2e-acceptance.mjs'], { env });
+  } else if (web) {
     run(
       process.execPath,
       ['scripts/web-auctions-acceptance.mjs', ...(realtime ? ['--realtime'] : [])],
