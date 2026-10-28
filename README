@@ -28,6 +28,12 @@ Participações, comprovantes e auditoria pública estão integrados com a API. 
 ACK e novos snapshots antes de liberar lances. Refetch a cada 30 segundos e ao
 retomar foco complementa os eventos. A navegação da
 sala para a auditoria e o comprovante usa as respectivas views integradas.
+O conteúdo público da sala é consultado em paralelo à inscrição WebSocket.
+A primeira resposta pode mostrar a carta, mas lances continuam bloqueados até
+uma nova leitura após o ACK, incluindo posição e saldo. Eventos durante essa
+verificação exigem outra leitura; falhas mantêm as ações bloqueadas.
+Painel e sala ficam no carregamento inicial para evitar uma segunda espera de
+renderização; as demais views secundárias continuam carregadas sob demanda.
 
 Requisitos
 ----------
@@ -933,13 +939,17 @@ refuses remote database hosts. Docker is the default; the existing
 HOLOBID_TEST_DATABASE_MODE=process option also works with local PostgreSQL tools.
 Do not launch the workspace Playwright command directly.
 
-Three browser scenarios exercise independent seller, bidder A, bidder B and
+Browser scenarios exercise independent seller, bidder A, bidder B and
 visitor contexts: publication, validation, bids, anti-sniping, reserve release,
 reconnect, settlement, receipt, audit tampering/incomplete verification, lost
 POST response recovery, session reload/logout, keyboard dialogs and both themes
 at 375px and desktop. axe checks WCAG A/AA rules; this is not a substitute for
 manual screen-reader, zoom and visual review. TCGdex/time/failures are controlled
 in the API test preload; application HTTP, Socket.IO, UI and databases are real.
+The room-loading journey delays real WebSocket delivery, confirms that public
+content renders first, places a competing bid before subscription and holds the
+verification GET. Bidding stays blocked until that fresh read completes; the
+next bid then updates the other browser through the real socket.
 
 These checks use local HTTP (NODE_ENV=development) so the real settlement worker
 runs while the test preload controls its clock. Secure-cookie behavior belongs

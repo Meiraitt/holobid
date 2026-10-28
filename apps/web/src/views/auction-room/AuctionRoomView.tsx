@@ -43,7 +43,9 @@ function Room({ id }: { id: string }) {
   const { user, status: authStatus } = useAuth();
   const realtime = useRealtimeRoom(id);
   const subscribed = realtime.room === 'joined' || realtime.room === 'missing';
-  const room = useQuery({ ...roomOptions(id), enabled: subscribed });
+  // Public content can load alongside the subscription. Bidding still waits for the
+  // post-subscription HTTP verification, personal position and wallet below.
+  const room = useQuery(roomOptions(id));
   const auction = room.data?.auction;
   const missing =
     realtime.room === 'missing' ||

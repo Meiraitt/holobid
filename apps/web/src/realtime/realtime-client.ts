@@ -437,14 +437,14 @@ export class RealtimeClient {
       await Promise.all(
         queries.map(async (query) => {
           const filter = { queryKey: query.queryKey, exact: true };
-          const initialDashboardRead =
-            query.queryKey[0] === 'private' &&
-            query.queryKey[2] === 'owned-auctions' &&
+          const initialContentRead =
+            ((query.queryKey[0] === 'private' && query.queryKey[2] === 'owned-auctions') ||
+              (query.queryKey[0] === 'public' && query.queryKey[1] === 'room')) &&
             query.state.data === undefined &&
             query.state.fetchStatus === 'fetching';
 
-          if (initialDashboardRead) {
-            // Let the read-only list paint its first response and start loading artwork.
+          if (initialContentRead) {
+            // Let read-only content paint its first response and start loading artwork.
             // Revalidate afterwards; readiness must not trust a pre-subscription snapshot.
             await query.promise?.catch(() => {});
           } else {

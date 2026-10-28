@@ -1,13 +1,5 @@
 import { lazy } from 'react';
 
-export const preloadDashboard = () =>
-  import('./my-auctions/MyAuctionsView').then((module) => ({ default: module.MyAuctionsView }));
-
-export const MyAuctionsView = lazy(preloadDashboard);
-
-export const AuctionRoomView = lazy(() =>
-  import('./auction-room/AuctionRoomView').then((module) => ({ default: module.AuctionRoomView })),
-);
 export const AuctionsView = lazy(() =>
   import('./auctions/AuctionsView').then((module) => ({ default: module.AuctionsView })),
 );

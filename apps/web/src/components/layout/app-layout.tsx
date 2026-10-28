@@ -25,6 +25,8 @@ export function AppLayout() {
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const main = useRef<HTMLElement>(null);
   const lastPath = useRef(location.pathname);
+  const publicRoom =
+    location.pathname !== '/auctions/new' && /^\/auctions\/[^/]+\/?$/.test(location.pathname);
   const needsLiveUpdates =
     location.pathname !== '/auctions/new' &&
     /^\/(auctions(?:\/[^/]+)?|my-auctions|participations|wallet)\/?$/.test(location.pathname);
@@ -305,7 +307,9 @@ export function AppLayout() {
         tabIndex={-1}
         className="page-container min-h-[70dvh] py-8 outline-none sm:py-12"
       >
-        <RouteBoundary key={user?.id ?? 'visitor'}>
+        {/* Room content is public; its queries and bid form separately scope private state
+            by user. Preserve the first public GET while the session is being restored. */}
+        <RouteBoundary key={publicRoom ? 'public-room' : (user?.id ?? 'visitor')}>
           <Outlet />
         </RouteBoundary>
       </main>

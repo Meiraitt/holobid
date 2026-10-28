@@ -114,91 +114,109 @@ function fixture() {
 }
 
 describe('realtime lifecycle and deduplication', () => {
-  it('paints the first dashboard response without cancelling it, then verifies fresh snapshots before readiness', async () => {
-    const f = fixture();
-    let first!: (value: { version: number }) => void;
-    let fresh!: (value: { version: number }) => void;
-    const initialResponse = new Promise<{ version: number }>((resolve) => {
-      first = resolve;
-    });
-    const freshResponse = new Promise<{ version: number }>((resolve) => {
-      fresh = resolve;
-    });
-    const aborted = vi.fn();
-    const read = vi.fn(({ signal }: { signal: AbortSignal }) => {
-      signal.addEventListener('abort', aborted);
-
-      return read.mock.calls.length === 1
-        ? initialResponse
-        : read.mock.calls.length === 2
-          ? freshResponse
-          : Promise.resolve({ version: 3 });
-    });
-    const observer = new QueryObserver(f.cache, {
-      queryKey: ['private', 'a', 'owned-auctions', { limit: 12 }],
-      queryFn: read,
-      retry: false,
-    });
-    const off = observer.subscribe(() => {});
-
-    try {
-      f.manager.start();
-      // Allow the socket's event coalescing window to pass while the initial GET is pending.
-      await new Promise((resolve) => setTimeout(resolve, 60));
-      expect(aborted).not.toHaveBeenCalled();
-      expect(read).toHaveBeenCalledTimes(1);
-      first({ version: 1 });
-      await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
-      expect(observer.getCurrentResult().data).toEqual({ version: 1 });
-      expect(f.manager.getSnapshot().phase).toBe('syncing');
-      f.sockets[0]!.receive('catalog.updated', {
-        eventId: 'during-read',
-        auctionId: 'lot',
-        auctionVersion: 2,
+  it.each(['dashboard', 'room'])(
+    'paints the first %s response, then verifies fresh snapshots before readiness',
+    async (view) => {
+      const f = fixture();
+      let first!: (value: { auction: { version: number } }) => void;
+      let fresh!: (value: { auction: { version: number } }) => void;
+      const initialResponse = new Promise<{ auction: { version: number } }>((resolve) => {
+        first = resolve;
       });
-      fresh({ version: 2 });
-      await vi.waitFor(() => expect(f.manager.getSnapshot().phase).toBe('ready'));
-      expect(read).toHaveBeenCalledTimes(3);
-      expect(observer.getCurrentResult().data).toEqual({ version: 3 });
-    } finally {
-      off();
-      observer.destroy();
-      f.manager.stop();
-      f.cache.clear();
-    }
-  });
+      const freshResponse = new Promise<{ auction: { version: number } }>((resolve) => {
+        fresh = resolve;
+      });
+      const aborted = vi.fn();
+      const read = vi.fn(({ signal }: { signal: AbortSignal }) => {
+        signal.addEventListener('abort', aborted);
 
-  it('does not declare the dashboard synchronized when its post-subscription verification fails', async () => {
-    const f = fixture();
-    let finish!: (value: { version: number }) => void;
-    const initialResponse = new Promise<{ version: number }>((resolve) => {
-      finish = resolve;
-    });
-    const read = vi
-      .fn()
-      .mockImplementationOnce(() => initialResponse)
-      .mockRejectedValue(new ApiRequestError('http', 503));
-    const observer = new QueryObserver(f.cache, {
-      queryKey: ['private', 'a', 'owned-auctions', { limit: 12 }],
-      queryFn: read,
-      retry: false,
-    });
-    const off = observer.subscribe(() => {});
+        return read.mock.calls.length === 1
+          ? initialResponse
+          : read.mock.calls.length === 2
+            ? freshResponse
+            : Promise.resolve({ auction: { version: 3 } });
+      });
+      const observer = new QueryObserver(f.cache, {
+        queryKey:
+          view === 'room'
+            ? ['public', 'room', 'lot']
+            : ['private', 'a', 'owned-auctions', { limit: 12 }],
+        queryFn: read,
+        retry: false,
+      });
+      const off = observer.subscribe(() => {});
 
-    try {
-      f.manager.start();
-      await new Promise((resolve) => setTimeout(resolve, 60));
-      finish({ version: 1 });
-      await vi.waitFor(() => expect(f.manager.getSnapshot().phase).toBe('unavailable'));
-      expect(observer.getCurrentResult().data).toEqual({ version: 1 });
-      expect(read).toHaveBeenCalledTimes(2);
-    } finally {
-      off();
-      observer.destroy();
-      f.manager.stop();
-      f.cache.clear();
-    }
-  });
+      const unwatch = view === 'room' ? f.manager.watchAuction('lot') : () => {};
+
+      try {
+        f.manager.start();
+        // Allow the socket's event coalescing window to pass while the initial GET is pending.
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        expect(aborted).not.toHaveBeenCalled();
+        expect(read).toHaveBeenCalledTimes(1);
+        first({ auction: { version: 1 } });
+        await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+        expect(observer.getCurrentResult().data).toEqual({ auction: { version: 1 } });
+        expect(f.manager.getSnapshot().phase).toBe('syncing');
+        f.sockets[0]!.receive(view === 'room' ? 'auction.updated' : 'catalog.updated', {
+          eventId: 'during-read',
+          auctionId: 'lot',
+          auctionVersion: 2,
+        });
+        fresh({ auction: { version: 2 } });
+        await vi.waitFor(() => expect(f.manager.getSnapshot().phase).toBe('ready'));
+        expect(read).toHaveBeenCalledTimes(3);
+        expect(observer.getCurrentResult().data).toEqual({ auction: { version: 3 } });
+      } finally {
+        unwatch();
+        off();
+        observer.destroy();
+        f.manager.stop();
+        f.cache.clear();
+      }
+    },
+  );
+
+  it.each(['dashboard', 'room'])(
+    'does not declare the %s synchronized when post-subscription verification fails',
+    async (view) => {
+      const f = fixture();
+      let finish!: (value: { auction: { version: number } }) => void;
+      const initialResponse = new Promise<{ auction: { version: number } }>((resolve) => {
+        finish = resolve;
+      });
+      const read = vi
+        .fn()
+        .mockImplementationOnce(() => initialResponse)
+        .mockRejectedValue(new ApiRequestError('http', 503));
+      const observer = new QueryObserver(f.cache, {
+        queryKey:
+          view === 'room'
+            ? ['public', 'room', 'lot']
+            : ['private', 'a', 'owned-auctions', { limit: 12 }],
+        queryFn: read,
+        retry: false,
+      });
+      const off = observer.subscribe(() => {});
+
+      const unwatch = view === 'room' ? f.manager.watchAuction('lot') : () => {};
+
+      try {
+        f.manager.start();
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        finish({ auction: { version: 1 } });
+        await vi.waitFor(() => expect(f.manager.getSnapshot().phase).toBe('unavailable'));
+        expect(observer.getCurrentResult().data).toEqual({ auction: { version: 1 } });
+        expect(read).toHaveBeenCalledTimes(2);
+      } finally {
+        unwatch();
+        off();
+        observer.destroy();
+        f.manager.stop();
+        f.cache.clear();
+      }
+    },
+  );
 
   it('ignores duplicate/old versions and bounds the event history', () => {
     const gate = new EventGate();
