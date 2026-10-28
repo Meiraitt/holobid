@@ -2,6 +2,7 @@ import { QueryObserver } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createQueryClient } from '../lib/query-client';
+import { ApiRequestError } from '../services/api-error';
 
 import { EventGate } from './event-gate';
 import { RealtimeClient } from './realtime-client';
@@ -198,5 +199,76 @@ describe('realtime lifecycle and deduplication', () => {
     observer.destroy();
     f.manager.stop();
     f.cache.clear();
+  });
+  it.each([
+    { key: ['public', 'room', 'missing'], status: 404 },
+    { key: ['public', 'auction', 'cancelled'], status: 404 },
+    { key: ['public', 'audit', 'missing'], status: 404 },
+    { key: ['public', 'audit', 'invalid'], status: 400 },
+    { key: ['public', 'receipt', 'missing'], status: 404 },
+    { key: ['private', 'a', 'auction-position', { id: 'cancelled' }], status: 404 },
+    { key: ['private', 'a', 'catalog', {}], status: 503 },
+    { key: ['private', 'a', 'catalog-item', {}], status: 503 },
+  ])(
+    'keeps $key errors local without masking a simultaneous wallet failure',
+    async ({ key, status }) => {
+      const f = fixture();
+      const resource = new QueryObserver(f.cache, {
+        queryKey: key,
+        queryFn: async () => {
+          throw new ApiRequestError('http', status);
+        },
+        retry: false,
+      });
+      const walletQuery = vi.fn(async () => ({ version: 1 }));
+      const wallet = new QueryObserver(f.cache, {
+        queryKey: ['private', 'a', 'wallet', {}],
+        queryFn: walletQuery,
+        retry: false,
+      });
+      const offResource = resource.subscribe(() => {});
+      const offWallet = wallet.subscribe(() => {});
+
+      try {
+        f.manager.start();
+        await vi.waitFor(() => expect(f.manager.getSnapshot().phase).toBe('ready'));
+        expect(resource.getCurrentResult().error).toBeInstanceOf(ApiRequestError);
+        walletQuery.mockRejectedValue(new ApiRequestError('http', 503));
+        f.manager.retry();
+        await vi.waitFor(() => expect(f.manager.getSnapshot().phase).toBe('unavailable'));
+        walletQuery.mockResolvedValue({ version: 2 });
+        f.manager.retry();
+        await vi.waitFor(() => expect(f.manager.getSnapshot().phase).toBe('ready'));
+        expect(wallet.getCurrentResult().data?.version).toBe(2);
+      } finally {
+        offResource();
+        offWallet();
+        resource.destroy();
+        wallet.destroy();
+        f.manager.stop();
+        f.cache.clear();
+      }
+    },
+  );
+  it('still blocks bids when an active room cannot be refreshed', async () => {
+    const f = fixture();
+    const room = new QueryObserver(f.cache, {
+      queryKey: ['public', 'room', 'lot'],
+      queryFn: async () => {
+        throw new ApiRequestError('http', 503);
+      },
+      retry: false,
+    });
+    const off = room.subscribe(() => {});
+
+    try {
+      f.manager.start();
+      await vi.waitFor(() => expect(f.manager.getSnapshot().phase).toBe('unavailable'));
+    } finally {
+      off();
+      room.destroy();
+      f.manager.stop();
+      f.cache.clear();
+    }
   });
 });

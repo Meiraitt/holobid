@@ -24,7 +24,10 @@ test('seller, two bidders and visitor complete the auction through real HTTP and
   await deposit(b.page);
   await a.page.goto(path);
   await b.page.goto(path);
-  await visitor.page.goto(`${path}/audit`);
+  await visitor.page.goto(path);
+  await visitor.page.getByRole('link', { name: 'Consultar auditoria', exact: true }).click();
+  await expect(visitor.page).toHaveURL(new RegExp(`${path}/audit$`));
+  await expect(visitor.page.getByRole('heading', { name: 'Histórico verificado' })).toBeVisible();
 
   await test.step('refusal persists, preserves the typed amount and focuses the invalid input', async () => {
     const input = a.page.getByLabel('Seu lance (R$)', { exact: true });
@@ -72,6 +75,13 @@ test('seller, two bidders and visitor complete the auction through real HTTP and
 
     configure({ now: settledLot.rows[0].endsAt.getTime() + 1000, reconcileSettlements: true });
     await expect(b.page.getByText('Carta arrematada por você', { exact: true })).toBeVisible();
+    await expect(
+      b.page.getByRole('button', { name: 'Este lote já foi encerrado', exact: true }),
+    ).toBeDisabled();
+    await a.page.goto(path);
+    await expect(
+      a.page.getByRole('button', { name: 'Este lote já foi encerrado', exact: true }),
+    ).toBeDisabled();
     await b.page.goto('/participations');
     await b.page.getByRole('button', { name: 'Arrematados', exact: true }).click();
 
@@ -146,6 +156,78 @@ test('seller, two bidders and visitor complete the auction through real HTTP and
       ]);
     }
   });
+});
+
+test('missing resources and an unavailable card provider keep their errors separate from realtime', async ({
+  journey,
+}) => {
+  const seller = await journey.actor('seller');
+  const visitor = await journey.actor('visitor');
+  const lot = await publish(seller.page);
+  const banner = /Atualizações ao vivo interrompidas/;
+
+  await seller.page.goto('/my-auctions');
+  await seller.page.getByRole('button', { name: 'Cancelar lote', exact: true }).click();
+  await seller.page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Cancelar lote', exact: true })
+    .click();
+  await expect(seller.page.getByRole('alertdialog')).toHaveCount(0);
+  for (const [path, heading] of [
+    [`/auctions/${lot.id}`, 'Lote indisponível'],
+    ['/auctions/00000000-0000-4000-8000-000000000000/audit', 'Lote não encontrado'],
+    ['/receipts/missing', 'Comprovante não encontrado'],
+  ]) {
+    await visitor.page.goto(path!);
+    await expect(visitor.page.getByRole('heading', { name: heading!, exact: true })).toBeVisible();
+    await expect(visitor.page.getByText(banner)).toHaveCount(0);
+    await expect(
+      visitor.page.getByRole('heading', { name: 'Conexão com a sala indisponível' }),
+    ).toHaveCount(0);
+  }
+
+  await visitor.page.goto(`/auctions/${lot.id}/audit`);
+  await expect(visitor.page.getByRole('heading', { name: 'Histórico verificado' })).toBeVisible();
+  await expect(
+    visitor.page.getByText('Este lote foi cancelado. Seu histórico público foi preservado.'),
+  ).toBeVisible();
+  await expect(visitor.page.getByText(banner)).toHaveCount(0);
+
+  configure({ provider: 'offline' });
+  try {
+    await seller.page.goto('/auctions/new');
+    await seller.page.getByLabel('Buscar carta', { exact: true }).fill('unavailable-regression');
+    await expect(
+      seller.page.getByText(
+        'O catálogo está temporariamente indisponível. Tente novamente em instantes.',
+      ),
+    ).toBeVisible();
+    // Reload forces an actual socket reconnect/snapshot refresh while the query is failing.
+    await seller.page.reload();
+    await seller.page.getByLabel('Buscar carta', { exact: true }).fill('unavailable-regression-2');
+    await expect(
+      seller.page.getByText(
+        'O catálogo está temporariamente indisponível. Tente novamente em instantes.',
+      ),
+    ).toBeVisible();
+    await expect(seller.page.getByText(banner)).toHaveCount(0);
+  } finally {
+    configure({ provider: 'fixture' });
+  }
+
+  await visitor.page.goto('/register');
+  await expect(
+    visitor.page.getByText('A senha deve ter pelo menos 10 caracteres', { exact: true }),
+  ).toBeVisible();
+  await visitor.page.getByLabel('E-mail', { exact: true }).fill('short-password@holobid.test');
+  await visitor.page.getByLabel('Senha', { exact: true }).fill('123456789');
+  await visitor.page.getByLabel('Confirmar senha', { exact: true }).fill('123456789');
+  await visitor.page.getByRole('button', { name: 'Criar conta', exact: true }).click();
+  await expect(visitor.page.getByLabel('Senha', { exact: true })).toHaveAttribute(
+    'aria-invalid',
+    'true',
+  );
+  await expect(visitor.page).toHaveURL(/\/register$/);
 });
 
 test('a committed deposit with a lost response survives reload without double credit', async ({

@@ -57,8 +57,10 @@ export function RegisterView() {
       nextErrors.email = 'Informe um e-mail válido, como voce@exemplo.com.';
     }
 
-    if (password.length < 10 || password.length > 128) {
-      nextErrors.password = 'Use entre 10 e 128 caracteres.';
+    if (password.length < 10) {
+      nextErrors.password = 'A senha deve ter pelo menos 10 caracteres';
+    } else if (password.length > 128) {
+      nextErrors.password = 'A senha deve ter no máximo 128 caracteres.';
     }
 
     if (confirmation !== password || !confirmation) {
@@ -146,7 +148,7 @@ export function RegisterView() {
           <Field
             htmlFor="register-password"
             label="Senha"
-            hint="Entre 10 e 128 caracteres. Espaços também contam."
+            hint="A senha deve ter pelo menos 10 caracteres"
             error={errors.password}
           >
             <div className="relative">

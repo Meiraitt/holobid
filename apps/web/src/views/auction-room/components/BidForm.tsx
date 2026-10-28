@@ -43,7 +43,11 @@ export function BidForm({
   const pending = attempt?.operation;
   const amountCents = bidAmount(amount);
   const disabled =
-    updatesPaused || !auction.canReceiveBids || position.isLeading || minimum === null;
+    auction.status !== 'LIVE' ||
+    updatesPaused ||
+    !auction.canReceiveBids ||
+    position.isLeading ||
+    minimum === null;
 
   useEffect(() => {
     active.current = true;
@@ -202,13 +206,19 @@ export function BidForm({
       >
         {pending
           ? 'Consultar lance'
-          : position.isLeading
-            ? 'Você já está na liderança'
-            : disabled
-              ? 'Aguardando liberação dos lances'
-              : amountCents === null
-                ? 'Dar lance'
-                : `Dar lance de ${formatMoney(amountCents)}`}
+          : auction.status === 'ENDED'
+            ? 'Este lote já foi encerrado'
+            : auction.status === 'CANCELLED'
+              ? 'Este lote foi cancelado'
+              : auction.status === 'SCHEDULED'
+                ? 'Aguardando início do leilão'
+                : position.isLeading
+                  ? 'Você já está na liderança'
+                  : disabled
+                    ? 'Aguardando liberação dos lances'
+                    : amountCents === null
+                      ? 'Dar lance'
+                      : `Dar lance de ${formatMoney(amountCents)}`}
       </Button>
       <p id="bid-reservation-hint" className="text-sm leading-relaxed text-muted-foreground">
         O valor fica reservado enquanto você lidera. Se for superado, ele volta ao saldo disponível.

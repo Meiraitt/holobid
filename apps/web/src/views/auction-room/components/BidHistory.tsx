@@ -1,6 +1,7 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
+import { Link } from 'react-router';
 
-import { Button } from '../../../components/ui/button';
+import { Button, buttonVariants } from '../../../components/ui/button';
 import { formatDate, formatMoney } from '../../../lib/format';
 import { errorMessage } from '../../../services/api-error';
 import { historyOptions } from '../room-queries';
@@ -27,6 +28,12 @@ export function BidHistory({
         </h2>
         <span className="text-sm text-muted-foreground">Mais recentes primeiro</span>
       </div>
+      <Link
+        to={`/auctions/${encodeURIComponent(auctionId)}/audit`}
+        className={buttonVariants({ variant: 'outline' })}
+      >
+        Consultar auditoria
+      </Link>
       {query.isPending ? (
         <p role="status">Carregando lances…</p>
       ) : query.isError && !query.data ? null : bids.length === 0 ? (

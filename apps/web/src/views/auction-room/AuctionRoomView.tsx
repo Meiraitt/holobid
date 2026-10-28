@@ -43,6 +43,9 @@ function Room({ id }: { id: string }) {
   const subscribed = realtime.room === 'joined' || realtime.room === 'missing';
   const room = useQuery({ ...roomOptions(id), enabled: subscribed });
   const auction = room.data?.auction;
+  const missing =
+    realtime.room === 'missing' ||
+    (room.error instanceof ApiRequestError && [400, 404].includes(room.error.status));
   const isBidder = user?.role === 'BIDDER';
   const position = useQuery({
     ...myBidOptions(user?.id ?? '', id),
@@ -97,8 +100,9 @@ function Room({ id }: { id: string }) {
   }
 
   if (
-    realtime.room === 'unavailable' ||
-    (!auction && ['disconnected', 'unavailable'].includes(realtime.phase))
+    !missing &&
+    (realtime.room === 'unavailable' ||
+      (!auction && ['disconnected', 'unavailable'].includes(realtime.phase)))
   ) {
     return (
       <EmptyState
@@ -109,21 +113,16 @@ function Room({ id }: { id: string }) {
     );
   }
 
-  if (room.isPending) {
+  if (!missing && room.isPending) {
     return <p role="status">Carregando lote…</p>;
   }
 
-  if (
-    !auction ||
-    (room.error instanceof ApiRequestError && [400, 404].includes(room.error.status))
-  ) {
+  if (missing || !auction) {
     return (
       <EmptyState
         title="Lote indisponível"
         description={
-          room.error instanceof ApiRequestError && [400, 404].includes(room.error.status)
-            ? 'Este lote não existe ou foi retirado da vitrine.'
-            : errorMessage(room.error)
+          missing ? 'Este lote não existe ou foi retirado da vitrine.' : errorMessage(room.error)
         }
         action={
           <>
