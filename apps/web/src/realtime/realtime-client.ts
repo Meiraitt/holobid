@@ -11,6 +11,7 @@ import type {
 import type { SessionController } from '../auth/session-controller';
 import { queryKeys } from '../lib/query-client';
 import { apiOrigin } from '../services/api-client';
+import { ApiRequestError } from '../services/api-error';
 
 import { EventGate } from './event-gate';
 
@@ -24,6 +25,27 @@ type Session = Pick<
 type RoomState = 'joining' | 'joined' | 'missing' | 'unavailable';
 
 type Room = { count: number; state: RoomState };
+
+function blocksSynchronization(key: QueryKey, error: unknown) {
+  const resource = key[0] === 'private' ? key[2] : key[1];
+
+  // External card search has its own error/retry UI and does not synchronize bids or balances.
+  if (key[0] === 'private' && ['catalog', 'catalog-item'].includes(String(resource))) {
+    return false;
+  }
+
+  const missingResource =
+    (key[0] === 'public' &&
+      ['room', 'auction', 'bid-history', 'audit', 'receipt'].includes(String(resource))) ||
+    (key[0] === 'private' && resource === 'auction-position');
+
+  return !(
+    missingResource &&
+    error instanceof ApiRequestError &&
+    error.kind === 'http' &&
+    [400, 404].includes(error.status)
+  );
+}
 
 export type RealtimeSnapshot = {
   phase: 'connecting' | 'disconnected' | 'syncing' | 'ready' | 'unavailable';
@@ -412,13 +434,24 @@ export class RealtimeClient {
         return;
       }
 
-      const results = await Promise.allSettled(
+      await Promise.all(
         keys.map((queryKey) =>
-          this.cache.invalidateQueries({ queryKey }, { throwOnError: true, cancelRefetch: false }),
+          this.cache.invalidateQueries({ queryKey }, { cancelRefetch: false }),
         ),
       );
 
-      failed ||= results.some((result) => result.status === 'rejected');
+      // A missing page is not a broken socket. Inspect active query failures separately so
+      // an expected 404 cannot hide a failed wallet/room refresh in the same synchronization.
+      failed ||= keys.some((queryKey) =>
+        this.cache
+          .getQueryCache()
+          .findAll({ queryKey, type: 'active' })
+          .some(
+            (query) =>
+              query.state.status === 'error' &&
+              blocksSynchronization(query.queryKey, query.state.error),
+          ),
+      );
     }
 
     if (current()) {
