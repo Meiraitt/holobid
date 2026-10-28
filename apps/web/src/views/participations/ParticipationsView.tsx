@@ -11,6 +11,22 @@ import { errorMessage } from '../../services/api-error';
 import { ParticipationRow } from './components/ParticipationRow';
 import { type ParticipationFilter, participationOptions } from './participation-queries';
 
+const emptyStates: Record<ParticipationFilter, { title: string; description: string }> = {
+  active: {
+    title: 'Nenhuma disputa em andamento',
+    description:
+      'Você não está participando de leilões ao vivo. Consulte Histórico ou Arrematados para ver seus resultados.',
+  },
+  all: {
+    title: 'Nenhuma participação por aqui',
+    description: 'Explore os leilões e dê seu primeiro lance para acompanhar a disputa aqui.',
+  },
+  won: {
+    title: 'Sua próxima carta pode estar na vitrine',
+    description: 'Seus arremates concluídos aparecerão nesta lista, junto dos comprovantes.',
+  },
+};
+
 export function ParticipationsView() {
   const { user } = useAuth();
   const [filter, setFilter] = useState<ParticipationFilter>('active');
@@ -65,16 +81,8 @@ export function ParticipationsView() {
         />
       ) : items.length === 0 ? (
         <EmptyState
-          title={
-            filter === 'won'
-              ? 'Sua próxima carta pode estar na vitrine'
-              : 'Nenhuma participação por aqui'
-          }
-          description={
-            filter === 'won'
-              ? 'Seus arremates concluídos aparecerão nesta lista, junto dos comprovantes.'
-              : 'Explore os leilões e dê seu primeiro lance para acompanhar a disputa aqui.'
-          }
+          title={emptyStates[filter].title}
+          description={emptyStates[filter].description}
           action={
             <Link className={buttonVariants()} to="/auctions">
               Explorar leilões

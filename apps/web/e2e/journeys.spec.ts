@@ -20,7 +20,19 @@ test('seller, two bidders and visitor complete the auction through real HTTP and
   const lot = await publish(seller.page);
   const path = `/auctions/${lot.id}`;
 
-  await deposit(a.page);
+  await test.step('empty participation feedback describes each selected filter', async () => {
+    await a.page.goto('/participations');
+    await expect(a.page.getByText('Nenhuma disputa em andamento', { exact: true })).toBeVisible();
+    await expect(a.page.getByText(/dê seu primeiro lance/)).toHaveCount(0);
+    await a.page.getByRole('button', { name: 'Histórico', exact: true }).click();
+    await expect(a.page.getByText('Nenhuma participação por aqui', { exact: true })).toBeVisible();
+    await expect(a.page.getByText(/dê seu primeiro lance/)).toBeVisible();
+    await a.page.getByRole('button', { name: 'Arrematados', exact: true }).click();
+    await expect(
+      a.page.getByText('Sua próxima carta pode estar na vitrine', { exact: true }),
+    ).toBeVisible();
+  });
+  await deposit(a.page, '100,00');
   await deposit(b.page);
   await a.page.goto(path);
   await b.page.goto(path);
@@ -65,7 +77,10 @@ test('seller, two bidders and visitor complete the auction through real HTTP and
     await expect(a.page.getByText('Você foi superado', { exact: true })).toBeVisible();
     await expect(a.page.getByText(/Reservado neste lote:\s*R\$\s*0,00$/)).toBeVisible();
     await a.page.goto('/wallet');
-    await expect(a.page.getByLabel('Resumo do saldo')).toContainText('500,00');
+    await expect(a.page.getByLabel('Resumo do saldo')).toContainText('100,00');
+    await a.page.goto(path);
+    await expect(a.page.getByRole('link', { name: 'Adicionar saldo simulado' })).toBeVisible();
+    await expect(a.page.getByText(/Seu saldo disponível não cobre o lance mínimo/)).toBeVisible();
   });
 
   await test.step('settlement produces a public receipt and independently verified audit', async () => {
@@ -78,11 +93,29 @@ test('seller, two bidders and visitor complete the auction through real HTTP and
     await expect(
       b.page.getByRole('button', { name: 'Este lote já foi encerrado', exact: true }),
     ).toBeDisabled();
-    await a.page.goto(path);
     await expect(
       a.page.getByRole('button', { name: 'Este lote já foi encerrado', exact: true }),
     ).toBeDisabled();
+    await expect(a.page.getByRole('link', { name: 'Adicionar saldo simulado' })).toHaveCount(0);
+    await expect(a.page.getByText(/Seu saldo disponível não cobre o lance mínimo/)).toHaveCount(0);
+    await a.page.reload();
+    await expect(
+      a.page.getByRole('button', { name: 'Este lote já foi encerrado', exact: true }),
+    ).toBeDisabled();
+    await expect(a.page.getByRole('link', { name: 'Adicionar saldo simulado' })).toHaveCount(0);
+    await test.info().attach('ended-room-without-funding-prompt', {
+      body: await a.page.screenshot({ fullPage: true }),
+      contentType: 'image/png',
+    });
     await b.page.goto('/participations');
+    await expect(b.page.getByText('Nenhuma disputa em andamento', { exact: true })).toBeVisible();
+    await expect(b.page.getByText(/dê seu primeiro lance/)).toHaveCount(0);
+    await test.info().attach('winner-without-active-disputes', {
+      body: await b.page.screenshot({ fullPage: true }),
+      contentType: 'image/png',
+    });
+    await b.page.getByRole('button', { name: 'Histórico', exact: true }).click();
+    await expect(b.page.getByRole('link', { name: /comprovante/i })).toBeVisible();
     await b.page.getByRole('button', { name: 'Arrematados', exact: true }).click();
 
     const receiptLink = b.page.getByRole('link', { name: /comprovante/i }).first();

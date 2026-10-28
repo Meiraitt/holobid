@@ -223,7 +223,7 @@ export function BidForm({
       <p id="bid-reservation-hint" className="text-sm leading-relaxed text-muted-foreground">
         O valor fica reservado enquanto você lidera. Se for superado, ele volta ao saldo disponível.
       </p>
-      {minimum !== null && wallet.availableCents < minimum && !position.isLeading && !pending && (
+      {!disabled && minimum !== null && wallet.availableCents < minimum && !pending && (
         <p className="border-l-2 border-warning pl-3 text-sm text-warning">
           Seu saldo disponível não cobre o lance mínimo de {formatMoney(minimum)}.{' '}
           <Link to="/wallet" className="ml-1 underline underline-offset-4">
