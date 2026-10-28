@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 
 import { CardArtwork } from '../../components/shared/card-artwork';
 import { EmptyState } from '../../components/shared/empty-state';
+import { CatalogGridSkeleton } from '../../components/shared/loading-skeletons';
 import { Button } from '../../components/ui/button';
 import { Field, Input } from '../../components/ui/input';
 import { queryKeys } from '../../lib/query-client';
@@ -74,7 +75,7 @@ export function CatalogPicker({
         />
       </Field>
       {searching ? (
-        <p role="status">Buscando cartas…</p>
+        <CatalogGridSkeleton />
       ) : query.isError && !query.data ? (
         <EmptyState
           title="O catálogo está indisponível"
@@ -107,15 +108,16 @@ export function CatalogPicker({
             role="group"
             aria-label="Cartas disponíveis"
           >
-            {cards.map((card) => (
+            {cards.map((card, index) => (
               <button
                 key={card.externalId}
                 type="button"
                 aria-pressed={selectedId === card.externalId}
-                className={`flex min-w-0 flex-col items-start rounded-lg border p-3 text-left transition-colors ${selectedId === card.externalId ? 'border-primary bg-primary/10' : 'border-border bg-card hover:border-input'}`}
+                className={`flex min-w-0 flex-col items-start rounded-lg border p-3 text-left transition-colors duration-200 motion-reduce:transition-none ${selectedId === card.externalId ? 'border-primary bg-primary/10' : 'border-border bg-card hover:border-input'}`}
                 onClick={() => onSelect(card.externalId)}
               >
                 <CardArtwork
+                  priority={index < 2}
                   src={mediaUrl(card.previewImageUrl, apiClient.origin)}
                   alt={card.title}
                   className="mx-auto mb-3 h-40 min-h-0 w-full max-w-28 p-0"

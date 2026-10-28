@@ -63,7 +63,13 @@ export function participationResult(item: Participation) {
   return { state, ...content[state], receiptCode: state === 'WON' ? item.receiptCode : null };
 }
 
-export function ParticipationRow({ item }: { item: Participation }) {
+export function ParticipationRow({
+  item,
+  priority = false,
+}: {
+  item: Participation;
+  priority?: boolean;
+}) {
   const { auction } = item;
   const result = participationResult(item);
   const ended = auction.status === 'ENDED';
@@ -72,6 +78,7 @@ export function ParticipationRow({ item }: { item: Participation }) {
     <li className="grid gap-6 py-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto] lg:items-center">
       <div className="flex min-w-0 items-center gap-5">
         <CardArtwork
+          priority={priority}
           src={mediaUrl(auction.imageUrl, apiClient.origin)}
           alt={`${auction.title}, ${auction.setName}`}
           className="h-32 min-h-0 w-24 shrink-0 p-0"

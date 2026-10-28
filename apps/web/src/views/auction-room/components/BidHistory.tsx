@@ -1,6 +1,7 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 
+import { CompactRowsSkeleton } from '../../../components/shared/loading-skeletons';
 import { Button, buttonVariants } from '../../../components/ui/button';
 import { formatDate, formatMoney } from '../../../lib/format';
 import { errorMessage } from '../../../services/api-error';
@@ -35,7 +36,7 @@ export function BidHistory({
         Consultar auditoria
       </Link>
       {query.isPending ? (
-        <p role="status">Carregando lances…</p>
+        <CompactRowsSkeleton label="Carregando lances…" />
       ) : query.isError && !query.data ? null : bids.length === 0 ? (
         <p className="py-8 text-muted-foreground">Nenhum lance registrado neste lote.</p>
       ) : (

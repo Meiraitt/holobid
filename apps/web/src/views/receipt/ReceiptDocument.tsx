@@ -26,6 +26,7 @@ export function ReceiptDocument({ receipt }: { receipt: PublicReceipt }) {
       <div className="space-y-8 p-6 sm:p-9">
         <div className="flex items-center gap-6 border-b pb-8 sm:gap-8">
           <CardArtwork
+            priority
             src={mediaUrl(receipt.imageUrl, apiClient.origin)}
             alt={`${receipt.title}, ${receipt.setName}`}
             className="h-40 min-h-0 w-28 shrink-0 p-0 sm:h-48 sm:w-32"

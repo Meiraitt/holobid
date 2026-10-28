@@ -17,11 +17,13 @@ const statuses = {
 
 export function AuctionCard({
   auction,
+  priority = false,
 }: {
   auction: Pick<
     DemoAuction,
     'id' | 'status' | 'bidCount' | 'currentBidCents' | 'startsAt' | 'endsAt'
   > & { card: Pick<DemoAuction['card'], 'image' | 'name' | 'edition' | 'number'> };
+  priority?: boolean;
 }) {
   return (
     <article className="group min-w-0">
@@ -30,9 +32,10 @@ export function AuctionCard({
         className="block rounded-md focus-visible:outline-offset-6"
       >
         <CardArtwork
+          priority={priority}
           src={auction.card.image}
           alt={`${auction.card.name}, ${auction.card.edition}, carta ${auction.card.number}`}
-          className="h-72 border border-transparent transition-colors group-hover:border-input"
+          className="h-72 border border-transparent transition-colors duration-200 motion-reduce:transition-none group-hover:border-input"
         />
         <div className="mt-4 flex items-center justify-between gap-2">
           <StatusBadge

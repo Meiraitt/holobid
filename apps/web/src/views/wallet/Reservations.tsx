@@ -2,6 +2,7 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 
 import { CardArtwork } from '../../components/shared/card-artwork';
+import { CompactRowsSkeleton } from '../../components/shared/loading-skeletons';
 import { Money } from '../../components/shared/money';
 import { Button, buttonVariants } from '../../components/ui/button';
 import { apiClient } from '../../services';
@@ -24,14 +25,14 @@ export function Reservations({ userId }: { userId: string }) {
         Valores comprometidos
       </h2>
       {query.isPending ? (
-        <p role="status">Carregando reservas…</p>
+        <CompactRowsSkeleton label="Carregando reservas…" count={2} artwork />
       ) : query.isError && !query.data ? null : items.length > 0 ? (
         <ul className="divide-y border-y">
           {items.map((item) => (
             <li key={item.auctionId}>
               <Link
                 to={`/auctions/${item.auctionId}`}
-                className="flex min-h-24 items-center gap-4 py-4 hover:bg-muted/60"
+                className="flex min-h-24 items-center gap-4 py-4 transition-colors duration-200 motion-reduce:transition-none hover:bg-muted/60"
               >
                 <CardArtwork
                   src={mediaUrl(item.auction.imageUrl, apiClient.origin)}

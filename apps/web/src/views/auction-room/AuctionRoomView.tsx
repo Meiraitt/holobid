@@ -4,9 +4,11 @@ import { Link, useParams } from 'react-router-dom';
 
 import { CardArtwork } from '../../components/shared/card-artwork';
 import { EmptyState } from '../../components/shared/empty-state';
+import { AuctionRoomSkeleton, BidPanelSkeleton } from '../../components/shared/loading-skeletons';
 import { StatusBadge } from '../../components/shared/status-badge';
 import { Button, buttonVariants } from '../../components/ui/button';
 import { Field, Input } from '../../components/ui/input';
+import { LoadingIndicator } from '../../components/ui/skeleton';
 import { toast } from '../../components/ui/toast';
 import { formatDate, formatMoney } from '../../lib/format';
 import { useAuth } from '../../providers/auth-provider';
@@ -114,7 +116,7 @@ function Room({ id }: { id: string }) {
   }
 
   if (!missing && room.isPending) {
-    return <p role="status">Carregando lote…</p>;
+    return <AuctionRoomSkeleton />;
   }
 
   if (missing || !auction) {
@@ -206,6 +208,7 @@ function Room({ id }: { id: string }) {
             alt={`${auction.title}, ${auction.setName}, carta ${auction.cardNumber}`}
             className="mx-auto h-80 w-full sm:h-[440px]"
             zoom
+            priority
           />
         </div>
         <aside
@@ -225,7 +228,11 @@ function Room({ id }: { id: string }) {
               {labels[auction.status]}
             </StatusBadge>
             <span className="text-sm text-muted-foreground">
-              {realtime.ready ? 'Atualizações ao vivo' : 'Sincronizando sala…'}
+              {realtime.ready ? (
+                'Atualizações ao vivo'
+              ) : (
+                <LoadingIndicator label="Sincronizando sala…" />
+              )}
             </span>
           </div>
           {deadline &&
@@ -270,7 +277,7 @@ function Room({ id }: { id: string }) {
             </p>
           )}
           {authStatus === 'restoring' ? (
-            <p role="status">Verificando sua sessão…</p>
+            <BidPanelSkeleton label="Verificando sua sessão…" />
           ) : !user ? (
             <div className="space-y-3">
               <p>Entre na sua conta para participar.</p>
@@ -295,12 +302,10 @@ function Room({ id }: { id: string }) {
               position={position.data}
               updatesPaused={updatesPaused}
             />
+          ) : privateFailure ? (
+            <p role="status">Não foi possível carregar sua posição e saldo.</p>
           ) : (
-            <p role="status">
-              {privateFailure
-                ? 'Não foi possível carregar sua posição e saldo.'
-                : 'Carregando sua posição e saldo…'}
-            </p>
+            <BidPanelSkeleton />
           )}
         </aside>
         <div className="space-y-6 lg:col-span-7">

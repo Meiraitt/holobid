@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 
 import { AuctionCard } from '../../components/shared/auction-card';
 import { EmptyState } from '../../components/shared/empty-state';
+import { AuctionGridSkeleton } from '../../components/shared/loading-skeletons';
 import { PageHeader } from '../../components/shared/page-header';
 import { Button, buttonVariants } from '../../components/ui/button';
 import { useAuth } from '../../providers/auth-provider';
@@ -116,32 +117,21 @@ export function AuctionsView() {
         aria-labelledby={`auction-tab-${activeFilter}`}
         tabIndex={0}
         aria-busy={query.isPending}
-        className="min-h-80"
+        // Keep a stable results panel when the selected filter is empty or unavailable.
+        className="min-h-[32rem]"
       >
         {query.isPending ? (
-          <>
-            <p role="status" className="sr-only">
-              Carregando leilões.
-            </p>
-            <div aria-hidden="true" className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
-              {Array.from({ length: 4 }, (_, index) => (
-                <div key={index} className="space-y-4">
-                  <div className="aspect-[4/5] rounded-lg bg-muted motion-safe:animate-pulse" />
-                  <div className="h-6 w-2/3 rounded bg-muted" />
-                  <div className="h-4 w-1/2 rounded bg-muted" />
-                  <div className="h-8 w-3/5 rounded bg-muted" />
-                </div>
-              ))}
-            </div>
-          </>
+          <AuctionGridSkeleton />
         ) : query.isError && !query.data ? (
           <EmptyState
+            className="min-h-[inherit] justify-center"
             title="Não foi possível carregar os leilões"
             description={errorMessage(query.error)}
             action={<Button onClick={() => void query.refetch()}>Tentar novamente</Button>}
           />
         ) : visibleAuctions.length === 0 ? (
           <EmptyState
+            className="min-h-[inherit] justify-center"
             title="Novas cartas chegam em breve"
             description={emptyMessages[activeFilter]}
             action={
@@ -158,8 +148,12 @@ export function AuctionsView() {
         ) : (
           <>
             <div className="grid gap-x-6 gap-y-9 sm:grid-cols-2 xl:grid-cols-4">
-              {visibleAuctions.map((auction) => (
-                <AuctionCard key={auction.id} auction={auctionCardData(auction)} />
+              {visibleAuctions.map((auction, index) => (
+                <AuctionCard
+                  key={auction.id}
+                  auction={auctionCardData(auction)}
+                  priority={index === 0}
+                />
               ))}
             </div>
             <div className="mt-9 flex flex-wrap items-center justify-center gap-4 border-t border-border pt-6">
