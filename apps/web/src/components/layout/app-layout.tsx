@@ -1,6 +1,6 @@
 import { ArrowRight, LogOut, Menu, X } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useMatch } from 'react-router-dom';
 
 import { cn } from '../../lib/utils';
 import { useAuth } from '../../providers/auth-provider';
@@ -25,6 +25,8 @@ export function AppLayout() {
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const main = useRef<HTMLElement>(null);
   const lastPath = useRef(location.pathname);
+  const roomMatch = useMatch('/auctions/:auctionId');
+  const publicRoom = roomMatch && roomMatch.params.auctionId?.toLowerCase() !== 'new';
   const needsLiveUpdates =
     location.pathname !== '/auctions/new' &&
     /^\/(auctions(?:\/[^/]+)?|my-auctions|participations|wallet)\/?$/.test(location.pathname);
@@ -305,7 +307,9 @@ export function AppLayout() {
         tabIndex={-1}
         className="page-container min-h-[70dvh] py-8 outline-none sm:py-12"
       >
-        <RouteBoundary key={user?.id ?? 'visitor'}>
+        {/* Room content is public; its queries and bid form separately scope private state
+            by user. Preserve the first public GET while the session is being restored. */}
+        <RouteBoundary key={publicRoom ? 'public-room' : (user?.id ?? 'visitor')}>
           <Outlet />
         </RouteBoundary>
       </main>

@@ -2,13 +2,12 @@ import { Route, Routes } from 'react-router-dom';
 
 import { GuestOnly, RequireAuth } from './components/auth/route-guards';
 import { AppLayout } from './components/layout/app-layout';
+import { AuctionRoomView } from './views/auction-room/AuctionRoomView';
 import {
-  AuctionRoomView,
   AuctionsView,
   AuditView,
   CreateAuctionView,
   LoginView,
-  MyAuctionsView,
   ParticipationsView,
   ReceiptView,
   RegisterView,
@@ -16,6 +15,7 @@ import {
 } from './views/deferred-views';
 import { DesignSystemView } from './views/design-system/DesignSystemView';
 import { LandingView } from './views/landing/LandingView';
+import { MyAuctionsView } from './views/my-auctions/MyAuctionsView';
 import { NotFoundView } from './views/not-found/NotFoundView';
 
 export function App() {
