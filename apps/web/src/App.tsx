@@ -2,19 +2,21 @@ import { Route, Routes } from 'react-router-dom';
 
 import { GuestOnly, RequireAuth } from './components/auth/route-guards';
 import { AppLayout } from './components/layout/app-layout';
-import { AuctionRoomView } from './views/auction-room/AuctionRoomView';
-import { AuctionsView } from './views/auctions/AuctionsView';
-import { AuditView } from './views/audit/AuditView';
-import { CreateAuctionView } from './views/create-auction/CreateAuctionView';
+import {
+  AuctionRoomView,
+  AuctionsView,
+  AuditView,
+  CreateAuctionView,
+  LoginView,
+  MyAuctionsView,
+  ParticipationsView,
+  ReceiptView,
+  RegisterView,
+  WalletView,
+} from './views/deferred-views';
 import { DesignSystemView } from './views/design-system/DesignSystemView';
 import { LandingView } from './views/landing/LandingView';
-import { LoginView } from './views/login/LoginView';
-import { MyAuctionsView } from './views/my-auctions/MyAuctionsView';
 import { NotFoundView } from './views/not-found/NotFoundView';
-import { ParticipationsView } from './views/participations/ParticipationsView';
-import { ReceiptView } from './views/receipt/ReceiptView';
-import { RegisterView } from './views/register/RegisterView';
-import { WalletView } from './views/wallet/WalletView';
 
 export function App() {
   return (

@@ -17,7 +17,25 @@ export default defineConfig(({ mode }) => {
 
   return {
     resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(),
+      tailwindcss(),
+      {
+        name: 'api-connection-hints',
+        transformIndexHtml() {
+          if (!env.VITE_API_URL) {
+            return [];
+          }
+
+          return [
+            {
+              tag: 'link',
+              attrs: { rel: 'preconnect', href: apiOrigin(env.VITE_API_URL), crossorigin: '' },
+            },
+          ];
+        },
+      },
+    ],
     server: { host: '127.0.0.1', port: 5173, proxy },
     preview: { proxy },
   };
