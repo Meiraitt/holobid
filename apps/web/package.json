@@ -10,7 +10,8 @@
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run --exclude \"**/*.integration.test.ts\"",
     "test:auth": "vitest run src/auth/session.integration.test.ts",
-    "test:auctions": "vitest run src/views/**/*.integration.test.ts"
+    "test:auctions": "vitest run src/views/auctions/storefront.integration.test.ts",
+    "test:realtime": "vitest run src/realtime/realtime.integration.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
@@ -23,6 +24,7 @@
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-router-dom": "7.18.4",
+    "socket.io-client": "4.8.4",
     "tailwind-merge": "3.7.0"
   },
   "devDependencies": {

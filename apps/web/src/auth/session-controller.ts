@@ -188,6 +188,12 @@ export class SessionController {
     }
   };
 
+  revoke = () => {
+    this.logoutToken = undefined;
+    this.clear('anonymous');
+    this.coordination.publish('signed-out');
+  };
+
   logout = async () => {
     this.logoutToken = this.accessToken ?? this.logoutToken;
     this.clear('anonymous');

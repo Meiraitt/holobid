@@ -10,7 +10,8 @@ import { processDatabases } from './test-postgres-process.mjs';
 const demo = process.argv[2] === '--tamper-demo';
 const http = ['--http', '--http-live'].includes(process.argv[2]);
 const auth = process.argv[2] === '--auth';
-const web = process.argv[2] === '--web-auctions';
+const realtime = process.argv[2] === '--web-realtime';
+const web = realtime || process.argv[2] === '--web-auctions';
 
 if (process.argv.length > 2 && ((!demo && !http && !auth && !web) || process.argv.length !== 3)) {
   throw new Error('Unsupported database runner arguments.');
@@ -176,7 +177,11 @@ try {
   }
 
   if (web) {
-    run(process.execPath, ['scripts/web-auctions-acceptance.mjs'], { env });
+    run(
+      process.execPath,
+      ['scripts/web-auctions-acceptance.mjs', ...(realtime ? ['--realtime'] : [])],
+      { env },
+    );
   } else if (auth) {
     run(process.execPath, ['scripts/web-auth-acceptance.mjs'], { env });
   } else if (http) {

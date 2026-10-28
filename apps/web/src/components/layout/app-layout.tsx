@@ -4,6 +4,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 
 import { cn } from '../../lib/utils';
 import { useAuth } from '../../providers/auth-provider';
+import { useRealtime } from '../../providers/realtime-provider';
 import { ThemeToggle } from '../../providers/theme-provider';
 import { errorMessage } from '../../services/api-error';
 import { Button, buttonVariants } from '../ui/button';
@@ -12,6 +13,7 @@ import { toast } from '../ui/toast';
 
 export function AppLayout() {
   const { user, status, logout } = useAuth();
+  const realtime = useRealtime();
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -97,6 +99,17 @@ export function AppLayout() {
           </span>
         </div>
       </div>
+      {['disconnected', 'unavailable'].includes(realtime.phase) && (
+        <div
+          role="status"
+          className="page-container flex flex-wrap items-center gap-3 border-b py-3 text-sm text-warning"
+        >
+          <p>Atualizações ao vivo interrompidas. Novos lances aguardam a sincronização.</p>
+          <Button variant="outline" size="sm" onClick={realtime.retry}>
+            Reconectar e atualizar
+          </Button>
+        </div>
+      )}
       <header className="border-b">
         <div className="page-container flex min-h-18 items-center justify-between gap-3">
           <Link

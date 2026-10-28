@@ -13,7 +13,7 @@
   },
   "packageManager": "npm@11.21.1",
   "scripts": {
-    "check": "npm run format:check && npm run lint && npm run typecheck && npm run build && npm run test:web && npm run test:api && npm run test:db && npm run test:http && npm run test:auth && npm run test:auctions",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run build && npm run test:web && npm run test:api && npm run test:db && npm run test:http && npm run test:auth && npm run test:auctions && npm run test:realtime",
     "check:container": "docker build --progress=plain --target checks -f apps/api/Dockerfile .",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "npm run build --workspace=@holobid/contracts && npm run typecheck --workspaces",
@@ -40,7 +40,8 @@
     "dev:web": "npm run dev --workspace=@holobid/web",
     "test:web": "npm run test --workspace=@holobid/web",
     "test:auth": "npm run build:api && npm run test:auth --workspace=@holobid/api",
-    "test:auctions": "npm run build:api && npm run test:auctions --workspace=@holobid/api"
+    "test:auctions": "npm run build:api && npm run test:auctions --workspace=@holobid/api",
+    "test:realtime": "npm run build:api && npm run test:realtime --workspace=@holobid/api"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
