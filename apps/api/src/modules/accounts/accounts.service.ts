@@ -11,7 +11,7 @@ import type {
 import { ApiException } from '../../common/http/api.exception';
 import { moneyToNumber } from '../../common/money';
 import { SignedCursorService } from '../../common/pagination/signed-cursor.service';
-import { DatabaseService } from '../../database/database.service';
+import { DatabaseService, TransactionContext } from '../../database/database.service';
 import { presentDetail, presentOwned, presentSummary } from '../auctions/auction.presenter';
 import { AuctionClock } from '../auctions/auction-clock';
 import { AuditService } from '../audit/audit.service';
@@ -22,6 +22,9 @@ import { WalletsRepository } from '../wallets/wallets.repository';
 import { OwnedAuctionQueryDto, ParticipationQueryDto } from './account.dto';
 import { presentMyAuction } from './account.presenter';
 import { AccountPagePosition, AccountsRepository } from './accounts.repository';
+
+// Verification loads original image bytes; bound memory even for a 100-item page.
+const OWNER_AUDIT_BATCH_SIZE = 12;
 
 @Injectable()
 export class AccountsService {
@@ -138,19 +141,13 @@ export class AccountsService {
         position,
         tx,
       );
+      const page = rows.slice(0, query.limit);
       const items: OwnedAuctionPage['items'] = [];
 
-      for (const row of rows.slice(0, query.limit)) {
-        const lot = await this.audit.readLockedSnapshot(row.id, tx);
+      for (let offset = 0; offset < page.length; offset += OWNER_AUDIT_BATCH_SIZE) {
+        const ids = page.slice(offset, offset + OWNER_AUDIT_BATCH_SIZE).map((row) => row.id);
 
-        if (!lot || lot.sellerId !== userId) {
-          throw new ApiException(404, 'AUCTION_NOT_FOUND', 'Auction not found.');
-        }
-
-        const result = await this.audit.verifyLocked(lot, lot.id);
-        const receipt = await this.accounts.receipt(lot.id, tx);
-
-        items.push(presentOwned(presentDetail(lot, now, result.integrity, receipt)));
+        items.push(...(await this.ownedBatch(userId, ids, now, tx)));
       }
 
       return {
@@ -158,6 +155,31 @@ export class AccountsService {
         nextCursor: this.next(rows, query.limit, scope),
         serverTime: now.toISOString(),
       };
+    });
+  }
+
+  private async ownedBatch(
+    userId: string,
+    ids: string[],
+    now: Date,
+    tx: TransactionContext,
+  ): Promise<OwnedAuctionPage['items']> {
+    const snapshots = await this.audit.readLockedSnapshots(ids, tx);
+    const byAuction = new Map(snapshots.map((lot) => [lot.id, lot]));
+    const results = await this.audit.verifyLockedBatch(snapshots);
+    const receipts = await this.accounts.receipts(ids, tx);
+    const byReceipt = new Map(receipts.map((receipt) => [receipt.auctionId, receipt]));
+
+    return ids.map((id) => {
+      const lot = byAuction.get(id);
+
+      if (!lot || lot.sellerId !== userId) {
+        throw new ApiException(404, 'AUCTION_NOT_FOUND', 'Auction not found.');
+      }
+
+      const result = results.get(lot.id)!;
+
+      return presentOwned(presentDetail(lot, now, result.integrity, byReceipt.get(lot.id) ?? null));
     });
   }
 

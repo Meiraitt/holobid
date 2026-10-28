@@ -17,20 +17,48 @@ export class AuditSourceRepository {
   }
 
   async read(auctionId: string, tx: TransactionContext): Promise<AuditSnapshot | null> {
-    const auction = await tx.auction.findUnique({ where: { id: auctionId } });
+    return (await this.readMany([auctionId], tx))[0] ?? null;
+  }
 
-    if (!auction) {
-      return null;
+  // Callers must hold every requested Auction row lock before reading related data.
+  async readMany(auctionIds: string[], tx: TransactionContext): Promise<AuditSnapshot[]> {
+    if (auctionIds.length === 0) {
+      return [];
     }
 
-    // A transaction has one connection; avoid Prisma's parallel relation queries.
-    const snapshot = await tx.catalogSnapshot.findUniqueOrThrow({
-      where: { id: auction.snapshotId },
+    const auctions = await tx.auction.findMany({ where: { id: { in: auctionIds } } });
+    // One connection per transaction: batch each relation rather than issuing queries per lot.
+    const snapshots = await tx.catalogSnapshot.findMany({
+      where: { id: { in: auctions.map((lot) => lot.snapshotId) } },
     });
-    const image = await tx.mediaAsset.findUniqueOrThrow({ where: { id: auction.imageId } });
-    const bids = await tx.bid.findMany({ where: { auctionId }, orderBy: { sequence: 'asc' } });
+    const images = await tx.mediaAsset.findMany({
+      where: { id: { in: auctions.map((lot) => lot.imageId) } },
+    });
+    const bids = await tx.bid.findMany({
+      where: { auctionId: { in: auctionIds } },
+      orderBy: [{ auctionId: 'asc' }, { sequence: 'asc' }],
+    });
+    const bySnapshot = new Map(snapshots.map((row) => [row.id, row]));
+    const byImage = new Map(images.map((row) => [row.id, row]));
+    const byAuction = new Map<string, AuditSnapshot['bids']>();
 
-    return { ...auction, snapshot, image, bids };
+    for (const bid of bids) {
+      const history = byAuction.get(bid.auctionId) ?? [];
+
+      history.push(bid);
+      byAuction.set(bid.auctionId, history);
+    }
+
+    return auctions.map((auction) => {
+      const snapshot = bySnapshot.get(auction.snapshotId);
+      const image = byImage.get(auction.imageId);
+
+      if (!snapshot || !image) {
+        throw new Error('Auction snapshot invariant violated.');
+      }
+
+      return { ...auction, snapshot, image, bids: byAuction.get(auction.id) ?? [] };
+    });
   }
 
   async requestHash(operationKey: string, tx: TransactionContext) {

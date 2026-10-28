@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import { DatabaseService, TransactionContext } from '../../database/database.service';
+import type { AuditCheckpoint } from '../../generated/audit/client';
 
 import { auditPending, auditTampered, auditUnavailable } from './audit.errors';
 import { AuditSnapshot, AuditVerdict, snapshotHead, verdict } from './audit.types';
@@ -27,8 +28,8 @@ export class AuditService {
 
   // For batch readers that already hold every Auction row lock. Reacquiring an
   // advisory lock after a row lock would invert the writers' lock order.
-  readLockedSnapshot(auctionId: string, tx: TransactionContext) {
-    return this.source.read(auctionId, tx);
+  readLockedSnapshots(auctionIds: string[], tx: TransactionContext) {
+    return this.source.readMany(auctionIds, tx);
   }
 
   async verify(auctionId: string): Promise<AuditVerdict> {
@@ -45,6 +46,39 @@ export class AuditService {
     try {
       const { checkpoint, pending } = await this.anchors.read(auctionId);
 
+      return this.verifySnapshot(snapshot, checkpoint, Boolean(pending));
+    } catch {
+      return verdict('INCOMPLETE', 'DEPENDENCY_UNAVAILABLE');
+    }
+  }
+
+  async verifyLockedBatch(snapshots: AuditSnapshot[]): Promise<Map<string, AuditVerdict>> {
+    try {
+      const anchors = await this.anchors.readMany(snapshots.map((snapshot) => snapshot.id));
+
+      return new Map(
+        snapshots.map((snapshot) => {
+          const anchor = anchors.get(snapshot.id);
+
+          return [
+            snapshot.id,
+            this.verifySnapshot(snapshot, anchor?.checkpoint ?? null, anchor?.pending ?? false),
+          ];
+        }),
+      );
+    } catch {
+      return new Map(
+        snapshots.map((snapshot) => [snapshot.id, verdict('INCOMPLETE', 'DEPENDENCY_UNAVAILABLE')]),
+      );
+    }
+  }
+
+  private verifySnapshot(
+    snapshot: AuditSnapshot | null,
+    checkpoint: AuditCheckpoint | null,
+    pending: boolean,
+  ): AuditVerdict {
+    try {
       if (pending) {
         return verdict(
           'INCOMPLETE',

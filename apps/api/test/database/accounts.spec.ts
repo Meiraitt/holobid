@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import process from 'node:process';
 
+import { Client } from 'pg';
 import request from 'supertest';
 
 import { AccountsRepository } from '../../src/modules/accounts/accounts.repository';
 import { AuditService } from '../../src/modules/audit/audit.service';
+import { AuditAnchorRepository } from '../../src/modules/audit/audit-anchor.repository';
 import { AuditSourceRepository } from '../../src/modules/audit/audit-source.repository';
 import { SettlementsService } from '../../src/modules/settlements/settlements.service';
 import { Account, AuctionHarness } from '../helpers/auction-harness';
@@ -389,7 +391,7 @@ describe('Bidder and auctioneer dashboard HTTP API', () => {
     const lot = await h.publish();
     const audit = h.app.get(AuditService);
     const source = h.app.get(AuditSourceRepository);
-    const read = audit.readLockedSnapshot.bind(audit);
+    const read = audit.readLockedSnapshots.bind(audit);
     const lock = source.lock.bind(source);
     let entered!: () => void;
     const started = new Promise<void>((resolve) => {
@@ -401,7 +403,7 @@ describe('Bidder and auctioneer dashboard HTTP API', () => {
       entered();
       await lock(id, tx);
     });
-    jest.spyOn(audit, 'readLockedSnapshot').mockImplementationOnce(async (id, tx) => {
+    jest.spyOn(audit, 'readLockedSnapshots').mockImplementationOnce(async (id, tx) => {
       bidding = h
         .bid(lot.id, a)
         .expect(201)
@@ -432,6 +434,124 @@ describe('Bidder and auctioneer dashboard HTTP API', () => {
       cancelReason: 'AUDIT_TAMPERED',
       auditIntegrity: 'TAMPERED',
     });
+  });
+  it('verifies each lot independently in a mixed batch, including missing and pending anchors', async () => {
+    const valid = await h.publish();
+    const tampered = await h.publish();
+    const missing = await h.publish();
+    const pending = await h.publish();
+
+    await h.bid(tampered.id, a).expect(201);
+    await h.db.client.bid.updateMany({
+      where: { auctionId: tampered.id },
+      data: { amountCents: 1200n },
+    });
+    await h.auditDb.client.auditCheckpoint.delete({ where: { auctionId: missing.id } });
+
+    const intent = await h.auditDb.client.auditIntent.findFirstOrThrow({
+      where: { auctionId: pending.id },
+    });
+
+    await h.auditDb.client.auditIntent.create({
+      data: {
+        ...intent,
+        id: randomUUID(),
+        operationKey: randomUUID(),
+        state: 'PREPARED',
+        resolvedAt: null,
+      },
+    });
+
+    const items = (await owned().expect(200)).body.items;
+    const byId = (id: string) => items.find((item: { id: string }) => item.id === id);
+
+    expect(byId(valid.id)).toMatchObject({ auditIntegrity: 'VERIFIED', canCancel: true });
+    expect(byId(tampered.id)).toMatchObject({ auditIntegrity: 'TAMPERED', canCancel: false });
+    expect(byId(missing.id)).toMatchObject({ auditIntegrity: 'INCOMPLETE', canCancel: false });
+    expect(byId(pending.id)).toMatchObject({ auditIntegrity: 'INCOMPLETE', canCancel: false });
+    for (const lot of [valid, tampered, missing, pending]) {
+      expect(byId(lot.id).auditIntegrity).toBe(
+        (await h.app.get(AuditService).verify(lot.id)).integrity,
+      );
+    }
+  });
+  it('fails closed for the entire page when the independent audit database cannot be read', async () => {
+    await h.publish();
+    await h.publish();
+    jest
+      .spyOn(h.app.get(AuditAnchorRepository), 'readMany')
+      .mockRejectedValueOnce(new Error('private connection details'));
+
+    const response = await owned().expect(200);
+
+    expect(response.body.items).toHaveLength(2);
+    for (const item of response.body.items) {
+      expect(item).toMatchObject({ auditIntegrity: 'INCOMPLETE', canCancel: false });
+    }
+
+    expect(JSON.stringify(response.body)).not.toContain('private connection');
+  });
+  it('keeps database reads bounded as the owner page grows from one to twelve lots', async () => {
+    for (let i = 0; i < 13; i++) {
+      await h.publish();
+    }
+
+    async function measure(limit: number) {
+      const spy = jest.spyOn(Client.prototype, 'query');
+
+      try {
+        const response = await owned(`?limit=${limit}`).expect(200);
+        const reads = spy.mock.calls.filter(([input]) => {
+          const sql = typeof input === 'string' ? input : (input as { text?: string }).text;
+
+          return sql && /\bSELECT\b/i.test(sql);
+        }).length;
+
+        expect(response.body.items).toHaveLength(limit);
+        expect(
+          response.body.items.every(
+            (item: { auditIntegrity: string }) => item.auditIntegrity === 'VERIFIED',
+          ),
+        ).toBe(true);
+        expect(reads).toBeGreaterThan(0);
+
+        return reads;
+      } finally {
+        spy.mockRestore();
+      }
+    }
+
+    const single = await measure(1);
+    const page = await measure(12);
+
+    expect(page).toBeLessThanOrEqual(single + 2);
+    process.stdout.write(`Owner page SELECT statements: one lot=${single}, twelve lots=${page}.\n`);
+  });
+  it('bounds image verification batches while preserving a larger page and its cursor', async () => {
+    for (let i = 0; i < 26; i++) {
+      await h.publish();
+    }
+
+    const read = jest.spyOn(h.app.get(AuditService), 'readLockedSnapshots');
+    const response = await owned('?limit=25').expect(200);
+    const ids = response.body.items.map((item: { id: string }) => item.id);
+
+    expect(ids).toHaveLength(25);
+    expect(new Set(ids).size).toBe(25);
+    expect(read.mock.calls.map(([batch]) => batch.length)).toEqual([12, 12, 1]);
+    expect(
+      response.body.items.every(
+        (item: { auditIntegrity: string }) => item.auditIntegrity === 'VERIFIED',
+      ),
+    ).toBe(true);
+
+    const next = await owned(
+      `?limit=25&cursor=${encodeURIComponent(response.body.nextCursor)}`,
+    ).expect(200);
+
+    expect(next.body.items).toHaveLength(1);
+    expect(ids).not.toContain(next.body.items[0].id);
+    expect(next.body.nextCursor).toBeNull();
   });
   it('requires a live session and the correct current role for every private endpoint', async () => {
     const lot = await h.publish();
