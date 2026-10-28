@@ -42,7 +42,9 @@
     "test:auth": "npm run build:api && npm run test:auth --workspace=@holobid/api",
     "test:auctions": "npm run build:api && npm run test:auctions --workspace=@holobid/api",
     "test:realtime": "npm run build:api && npm run test:realtime --workspace=@holobid/api",
-    "test:e2e": "npm run build:api && node apps/api/scripts/test-database.mjs --web-e2e"
+    "test:e2e": "npm run build:api && node apps/api/scripts/test-database.mjs --web-e2e",
+    "build:web:deploy": "node scripts/build-web-deploy.mjs",
+    "test:web:deploy": "node scripts/web-deploy-smoke.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

@@ -946,3 +946,53 @@ Reports/screenshots are ignored. Traces containing credentials are disabled.
 The browser CI job runs only for public repositories on standard GitHub runners;
 it does not add a paid service or install Chromium in the Northflank API image.
 The existing npm run check gate remains separate from npm run test:e2e.
+
+
+Separate frontend deployment (FE-14)
+
+Use a personal Vercel Hobby project and its free vercel.app domain. Import this
+repository with Root Directory set to the repository root (not apps/web).
+vercel.json builds only the contracts + web workspace and publishes apps/web/dist.
+The API remains on Northflank; this frontend deployment does not deploy NestJS,
+run migrations, provision databases, or require a public GitHub repository.
+Select Node.js 24.x in the project settings. Keep the production branch main.
+No Pro trial, paid domain, analytics add-on or extra service is needed.
+
+    npm run build:web:deploy
+
+The deploy build derives VITE_API_URL and VITE_SOCKET_URL from the HTTPS auth
+rewrite destination in vercel.json. These public origins are versioned. Optional
+Vercel environment overrides must match exactly, or the build fails rather than
+sending auth and resource requests to different backends. Never add database
+URLs, JWT/audit secrets or any other private value to VITE_* variables.
+
+/api/v1/auth/* is forwarded before the SPA fallback. Auth responses are no-store
+at the browser and CDN layers. The refresh cookie remains host-only for the
+frontend domain, HttpOnly and Secure on HTTPS. HTTP resources and Socket.IO go
+directly to the backend. Set WEB_ORIGIN in Northflank to the exact production
+frontend origin after the domain is assigned, then restart/redeploy the API.
+Do not use wildcard CORS or whitelist arbitrary preview domains. Preview builds
+are useful visually but cannot authenticate until their exact origin is allowed;
+use the stable production domain for the integrated demo.
+
+Release acceptance (pending until a Vercel account/deployment is available):
+  1. Confirm Hobby, repository root, Node 24, successful build and free domain.
+  2. Configure the exact WEB_ORIGIN on Northflank; verify health/ready and CORS.
+  3. With third-party cookies blocked, register/login, reload a private deep link,
+     verify session restoration, then logout and revisit the protected route.
+  4. Use independent seller and two bidder contexts: publish, deposit, bid,
+     outbid, disconnect/reconnect, settle and confirm all balances.
+  5. Open /auctions/:id, /auctions/:id/audit and /receipts/:code directly as a
+     visitor; verify media, history, amounts and anonymous bidder identifiers.
+  6. Run npm run test:web:deploy -- --web https://YOUR-PROJECT.vercel.app
+     for read-only routing, CORS, anonymous auth and public WebSocket probes.
+
+The automated release probe does not replace the authenticated financial/browser
+acceptance. It never creates users, lots or transactions. Rollback: promote the
+previous frontend deployment, keeping a backend with compatible contracts and
+the same WEB_ORIGIN. No frontend deploy should reset databases or rotate keys.
+
+Official configuration references:
+https://vercel.com/docs/project-configuration/vercel-json
+https://vercel.com/docs/routing/rewrites
+https://vercel.com/docs/plans/hobby
