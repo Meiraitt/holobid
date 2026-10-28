@@ -75,6 +75,36 @@ export class AuditAnchorRepository {
     });
   }
 
+  async readMany(auctionIds: string[]) {
+    if (auctionIds.length === 0) {
+      return new Map<string, { checkpoint: AuditCheckpoint | null; pending: boolean }>();
+    }
+
+    // Both tables must reflect the same audit commit. Primary row locks are held by
+    // the caller; a pending confirmation remains INCOMPLETE until both rows agree.
+    const [checkpoints, intents] = await this.database.client.$transaction(
+      [
+        this.database.client.auditCheckpoint.findMany({
+          where: { auctionId: { in: auctionIds } },
+        }),
+        this.database.client.auditIntent.findMany({
+          where: { auctionId: { in: auctionIds }, state: 'PREPARED' },
+          select: { auctionId: true },
+        }),
+      ],
+      { isolationLevel: 'RepeatableRead' },
+    );
+    const byAuction = new Map(checkpoints.map((row) => [row.auctionId, row]));
+    const pending = new Set(intents.map((row) => row.auctionId));
+
+    return new Map(
+      auctionIds.map((id) => [
+        id,
+        { checkpoint: byAuction.get(id) ?? null, pending: pending.has(id) },
+      ]),
+    );
+  }
+
   prepare(proposal: AuditProposal) {
     return this.database.transaction(async (tx) => {
       await this.lock(tx, proposal.operationKey, 1);

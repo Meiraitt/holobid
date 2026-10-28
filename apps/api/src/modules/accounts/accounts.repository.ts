@@ -148,8 +148,8 @@ export class AccountsRepository {
       ORDER BY "createdAt" DESC, id DESC LIMIT ${take} FOR UPDATE`);
   }
 
-  receipt(id: string, tx: TransactionContext) {
-    return tx.receipt.findUnique({ where: { auctionId: id } });
+  receipts(ids: string[], tx: TransactionContext) {
+    return tx.receipt.findMany({ where: { auctionId: { in: ids } } });
   }
 
   async completedSales(userId: string, tx: TransactionContext) {
