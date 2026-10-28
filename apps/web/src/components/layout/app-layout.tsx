@@ -1,4 +1,4 @@
-import { ArrowRight, Layers2, LogOut, Menu, X } from 'lucide-react';
+import { ArrowRight, LogOut, Menu, X } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 
@@ -7,6 +7,7 @@ import { useAuth } from '../../providers/auth-provider';
 import { useRealtime } from '../../providers/realtime-provider';
 import { ThemeToggle } from '../../providers/theme-provider';
 import { errorMessage } from '../../services/api-error';
+import { Brand } from '../shared/brand';
 import { Button, buttonVariants } from '../ui/button';
 import { toast } from '../ui/toast';
 
@@ -157,12 +158,11 @@ export function AppLayout() {
       <header className="relative z-40 border-b bg-background">
         <div className="page-container flex min-h-18 items-center justify-between gap-3">
           <Link
-            to="/auctions"
+            to="/"
             className="flex items-center gap-2 font-display text-3xl font-semibold"
-            aria-label="HoloBid, página de leilões"
+            aria-label="HoloBid, página inicial"
           >
-            <Layers2 aria-hidden="true" className="size-7 text-primary" />
-            HoloBid
+            <Brand />
           </Link>
           <nav aria-label="Principal" className="hidden gap-2 lg:flex">
             {links()}
