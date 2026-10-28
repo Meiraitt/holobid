@@ -1,4 +1,5 @@
 import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { AuctionDetail } from '@holobid/contracts';
@@ -80,6 +81,12 @@ describe('auction room invariants', () => {
         <AuctionOutcome auction={{ ...ended, outcome: { kind: 'NO_BIDS', amountCents: 0 } }} />,
       ),
     ).toContain('R$ 0,00');
-    expect(renderToStaticMarkup(<AuctionOutcome auction={ended} />)).toContain('Lic. ABCD');
+    expect(
+      renderToStaticMarkup(
+        <MemoryRouter>
+          <AuctionOutcome auction={ended} />
+        </MemoryRouter>,
+      ),
+    ).toContain('Lic. ABCD');
   });
 });

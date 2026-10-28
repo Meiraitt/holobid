@@ -15,6 +15,8 @@ export class ApiRequestError extends Error {
 }
 
 const messages: Record<string, string> = {
+  RECEIPT_UNAVAILABLE:
+    'O comprovante está temporariamente indisponível. Tente novamente em instantes.',
   BALANCE_LIMIT_EXCEEDED:
     'Este depósito ultrapassa o limite de saldo da carteira. Informe um valor menor.',
   AUCTION_NOT_STARTED: 'Este leilão ainda não começou. Aguarde o início.',
