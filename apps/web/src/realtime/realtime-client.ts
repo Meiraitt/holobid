@@ -224,6 +224,7 @@ export class RealtimeClient {
         ['public', 'room', event.auctionId],
         ['public', 'auction', event.auctionId],
         ['public', 'bid-history', event.auctionId],
+        ['public', 'audit', event.auctionId],
         ...privateKeys,
       ]);
     });
@@ -232,7 +233,11 @@ export class RealtimeClient {
         current() &&
         gate.accept(event.eventId, `catalog:${event.auctionId}`, event.auctionVersion)
       ) {
-        this.requestSync([['public', 'auctions'], ...privateKeys]);
+        this.requestSync([
+          ['public', 'auctions'],
+          ['public', 'audit', event.auctionId],
+          ...privateKeys,
+        ]);
       }
     });
     socket.on('wallet.updated', (event) => {

@@ -23,6 +23,8 @@ import { mediaUrl } from '../services/media-url';
 import { createOperation } from '../services/operations';
 import { resourceServices } from '../services/resource-services';
 import { myBidOptions, roomOptions } from '../views/auction-room/room-queries';
+import { auditJsonUrl, auditOptions } from '../views/audit/audit-queries';
+import { verificationPresentation } from '../views/audit/VerificationSummary';
 import { participationResult } from '../views/participations/components/ParticipationRow';
 import { participationOptions } from '../views/participations/participation-queries';
 import { receiptOptions } from '../views/receipt/receipt-queries';
@@ -35,10 +37,12 @@ const origin = process.env.HOLOBID_WEB_API_URL!;
 const webOrigin = process.env.HOLOBID_WEB_TEST_ORIGIN!;
 const control = process.env.HOLOBID_HTTP_CONTROL!;
 const sql = new pg.Client({ connectionString: process.env.DATABASE_URL });
+const auditSql = new pg.Client({ connectionString: process.env.AUDIT_DATABASE_URL });
 const nativeFetch = globalThis.fetch;
 let httpRequests = 0;
 let depositRequests = 0;
 let loseDepositResponse = false;
+let loseAuditResponse = false;
 const publicAuthHeaders: string[] = [];
 let wsEvents = 0;
 const dispose: Array<() => void> = [];
@@ -239,19 +243,29 @@ function observe(context: Awaited<ReturnType<typeof person>>, id: string) {
 beforeAll(async () => {
   expect(process.env.HOLOBID_ISOLATED_DATABASE_TEST).toBe('1');
   expect(new URL(process.env.DATABASE_URL!).hostname).toBe('127.0.0.1');
+  expect(new URL(process.env.AUDIT_DATABASE_URL!).hostname).toBe('127.0.0.1');
   now = JSON.parse(readFileSync(control, 'utf8')).now;
   await sql.connect();
+  await auditSql.connect();
   vi.stubGlobal('fetch', async (url: string | URL, options: RequestInit = {}) => {
     const headers = new Headers(options.headers);
 
     headers.set('Origin', webOrigin);
-    if (String(url).includes('/receipts/') && headers.has('Authorization')) {
+    if (
+      (String(url).includes('/receipts/') || String(url).includes('/audit')) &&
+      headers.has('Authorization')
+    ) {
       publicAuthHeaders.push(String(url));
     }
 
     const response = await nativeFetch(url, { ...options, headers });
 
     httpRequests++;
+    if (loseAuditResponse && String(url).includes(`/auctions/${receiptLots[1]?.id}/audit`)) {
+      loseAuditResponse = false;
+      throw new TypeError('Test: audit response lost after the real HTTP request');
+    }
+
     if (options.method === 'POST' && String(url).endsWith('/wallet/deposits')) {
       depositRequests++;
       if (loseDepositResponse && response.ok) {
@@ -287,6 +301,7 @@ afterAll(async () => {
   dispose.reverse().forEach((fn) => fn());
   vi.unstubAllGlobals();
   await sql.end();
+  await auditSql.end();
   process.stdout.write(
     `Frontend realtime/wallet: ${httpRequests} real HTTP requests; ${wsEvents} real Socket.IO events over WebSocket.\n`,
   );
@@ -929,5 +944,260 @@ describe('participation and receipt integration over HTTP and WebSocket', () => 
     }
 
     expect(await publicApi.receipt(publicReceipt.publicCode)).toEqual(publicReceipt);
+  });
+});
+
+function observePublicAudit(id: string) {
+  const cache = createQueryClient();
+  const session = {
+    getSnapshot: () => ({ status: 'anonymous' as const, user: null, expiresAt: 0 }),
+    subscribe: () => () => {},
+    token: () => null,
+    refresh: async () => null,
+    revoke: () => {},
+  };
+  const socket = io(origin, {
+    autoConnect: false,
+    forceNew: true,
+    transports: ['websocket'],
+    reconnectionDelay: 50,
+    extraHeaders: { Origin: webOrigin },
+    auth: {},
+  });
+
+  socket.onAny(() => {
+    wsEvents++;
+  });
+
+  const manager = new RealtimeClient(cache, session, () => socket);
+  const options = {
+    ...auditOptions(id, undefined, publicApi.auctions, 1),
+    refetchInterval: false as const,
+    retry: false as const,
+  };
+  const query = new QueryObserver(cache, options);
+  const off = query.subscribe(() => {});
+  const unwatch = manager.watchAuction(id);
+
+  manager.start();
+  dispose.push(() => {
+    off();
+    unwatch();
+    manager.stop();
+    query.destroy();
+    cache.clear();
+  });
+
+  return { cache, manager, socket, query, options };
+}
+
+describe('public audit integration with real verification and WebSocket', () => {
+  let audit: ReturnType<typeof observePublicAudit>;
+  let empty: AuctionDetail;
+  let cancelled: AuctionDetail;
+  let auditSeller: Awaited<ReturnType<typeof person>>;
+
+  it('verifies the complete chain while returning only the requested page to an anonymous client', async () => {
+    audit = observePublicAudit(receiptLots[1]!.id);
+    await vi.waitFor(() => {
+      expect(audit.manager.getSnapshot().phase).toBe('ready');
+      expect(audit.query.getCurrentResult().data).toMatchObject({
+        integrity: 'VERIFIED',
+        expectedCount: 3,
+        actualCount: 3,
+        verifiedThroughSequence: 3,
+        headHash: publicReceipt.finalAuditHash,
+      });
+    });
+
+    const first = audit.query.getCurrentResult().data!;
+    const second = await audit.cache.fetchQuery(
+      auditOptions(receiptLots[1]!.id, first.nextCursor!, publicApi.auctions, 1),
+    );
+    const third = await audit.cache.fetchQuery(
+      auditOptions(receiptLots[1]!.id, second.nextCursor!, publicApi.auctions, 1),
+    );
+
+    expect([first.items[0]!.sequence, second.items[0]!.sequence, third.items[0]!.sequence]).toEqual(
+      [3, 2, 1],
+    );
+    expect(third.nextCursor).toBeNull();
+    expect(second.integrity).toBe('VERIFIED');
+    expect(second.verifiedThroughSequence).toBe(3);
+    expect(first.items[0]).not.toHaveProperty('hash');
+    expect(
+      await (await fetch(auditJsonUrl(receiptLots[1]!.id, undefined, origin, 1))).json(),
+    ).toEqual(first);
+    expect(publicAuthHeaders).toEqual([]);
+  });
+
+  it('detects tampering in an older bid that is absent from the displayed page and restores verification', async () => {
+    const row = (
+      await sql.query('SELECT id, "amountCents" FROM "Bid" WHERE "auctionId"=$1 AND sequence=1', [
+        receiptLots[1]!.id,
+      ])
+    ).rows[0];
+
+    try {
+      await sql.query('UPDATE "Bid" SET "amountCents"="amountCents"+1 WHERE id=$1', [row.id]);
+      await audit.query.refetch();
+
+      const report = audit.query.getCurrentResult().data!;
+
+      expect(report.items[0]!.sequence).toBe(3);
+      expect(report).toMatchObject({
+        integrity: 'TAMPERED',
+        firstInvalidSequence: 1,
+        verifiedThroughSequence: 0,
+        reasonCode: 'BID_CHAIN_MISMATCH',
+      });
+      expect(report.headHash).toBeNull();
+    } finally {
+      await sql.query('UPDATE "Bid" SET "amountCents"=$1 WHERE id=$2', [row.amountCents, row.id]);
+    }
+
+    await audit.query.refetch();
+    expect(audit.query.getCurrentResult().data?.integrity).toBe('VERIFIED');
+  });
+
+  it('keeps incomplete verification distinct from a valid chain when the independent anchor cannot be verified', async () => {
+    const previous = (
+      await auditSql.query('SELECT "keyId" FROM "AuditCheckpoint" WHERE "auctionId"=$1', [
+        receiptLots[1]!.id,
+      ])
+    ).rows[0].keyId;
+
+    try {
+      await auditSql.query('UPDATE "AuditCheckpoint" SET "keyId"=$1 WHERE "auctionId"=$2', [
+        'unavailable-test-key',
+        receiptLots[1]!.id,
+      ]);
+      await audit.query.refetch();
+      expect(audit.query.getCurrentResult().data).toMatchObject({
+        integrity: 'INCOMPLETE',
+        reasonCode: 'KEY_OR_VERSION_UNAVAILABLE',
+        expectedCount: null,
+        actualCount: null,
+        headHash: null,
+      });
+    } finally {
+      await auditSql.query('UPDATE "AuditCheckpoint" SET "keyId"=$1 WHERE "auctionId"=$2', [
+        previous,
+        receiptLots[1]!.id,
+      ]);
+    }
+
+    await audit.query.refetch();
+    expect(audit.query.getCurrentResult().data?.integrity).toBe('VERIFIED');
+  });
+
+  it('handles empty and cancelled histories publicly without deriving integrity from row count', async () => {
+    auditSeller = await person('audit-seller', true);
+    for (let index = 0; index < 2; index++) {
+      const result = await auditSeller.api.auctions.create(
+        createOperation({
+          externalItemId: 'base1-58',
+          startingPriceCents: 1000,
+          minimumIncrementCents: 100,
+          startsAt: new Date(now + 1320000).toISOString(),
+          endsAt: new Date(now + 1920000).toISOString(),
+        }),
+      );
+
+      if (index === 0) {
+        empty = result.data as AuctionDetail;
+      } else {
+        cancelled = result.data as AuctionDetail;
+      }
+    }
+
+    const report = await publicApi.auctions.audit(empty.id);
+
+    expect(report).toMatchObject({
+      integrity: 'VERIFIED',
+      actualCount: 0,
+      expectedCount: 0,
+      items: [],
+    });
+    await auditSeller.api.auctions.cancel(cancelled.id, createOperation({}));
+    expect(await publicApi.auctions.audit(cancelled.id)).toMatchObject({
+      status: 'CANCELLED',
+      integrity: 'VERIFIED',
+      items: [],
+    });
+  });
+
+  it('reconciles new bids and transport reconnection on the public audit without authentication or polling', async () => {
+    const live = observePublicAudit(empty.id);
+
+    await vi.waitFor(() => expect(live.manager.getSnapshot().phase).toBe('ready'));
+    await participantE.api.auctions.bid(empty.id, createOperation({ amountCents: 1000 }));
+    await vi.waitFor(() =>
+      expect(live.query.getCurrentResult().data).toMatchObject({
+        integrity: 'VERIFIED',
+        actualCount: 1,
+        verifiedThroughSequence: 1,
+      }),
+    );
+    expect(live.query.getCurrentResult().data?.items[0]?.amountCents).toBe(1000);
+    live.socket.io.reconnection(false);
+    live.socket.io.engine.close();
+    await vi.waitFor(() => expect(live.manager.getSnapshot().phase).toBe('disconnected'));
+    await participantF.api.auctions.bid(empty.id, createOperation({ amountCents: 1100 }));
+    expect(live.query.getCurrentResult().data?.actualCount).toBe(1);
+    live.socket.io.reconnection(true);
+    live.manager.retry();
+    await vi.waitFor(() =>
+      expect(live.query.getCurrentResult().data).toMatchObject({
+        integrity: 'VERIFIED',
+        actualCount: 2,
+        verifiedThroughSequence: 2,
+      }),
+    );
+    expect(live.socket.io.engine.transport.name).toBe('websocket');
+    expect(publicAuthHeaders).toEqual([]);
+  });
+
+  it('preserves a stale snapshot as unavailable on response loss and recovers through a fresh request', async () => {
+    loseAuditResponse = true;
+    await audit.query.refetch();
+
+    const result = audit.query.getCurrentResult();
+
+    expect(result.isError).toBe(true);
+    expect(result.error).toMatchObject({ kind: 'network' });
+    expect(result.data?.integrity).toBe('VERIFIED');
+    expect(verificationPresentation(result.data!, false, result.isError).title).toBe(
+      'Verificação indisponível',
+    );
+    await audit.query.refetch();
+    expect(audit.query.getCurrentResult().isSuccess).toBe(true);
+  });
+
+  it('rejects unknown IDs and foreign cursors, and exposes no identity or private authentication fields', async () => {
+    await expect(publicApi.auctions.audit(randomUUID())).rejects.toMatchObject({ status: 404 });
+    await expect(publicApi.auctions.audit('invalid')).rejects.toMatchObject({ status: 400 });
+
+    const cursor = audit.query.getCurrentResult().data!.nextCursor!;
+
+    await expect(publicApi.auctions.audit(cancelled.id, { cursor })).rejects.toMatchObject({
+      status: 400,
+    });
+
+    const serialized = JSON.stringify(audit.query.getCurrentResult().data);
+
+    for (const secret of [
+      participantE.id,
+      participantF.id,
+      participantE.credentials.email,
+      participantF.credentials.email,
+      'bidderId',
+      'sellerId',
+      'password',
+      'mac',
+      'accessToken',
+    ]) {
+      expect(serialized).not.toContain(secret);
+    }
   });
 });

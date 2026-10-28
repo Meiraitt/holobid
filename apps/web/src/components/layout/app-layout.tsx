@@ -94,8 +94,7 @@ export function AppLayout() {
       <div className="no-print border-b bg-muted/70">
         <div className="page-container flex min-h-9 flex-wrap items-center justify-between gap-x-4 gap-y-1 py-1 text-xs text-muted-foreground">
           <span>
-            Vitrine, lances, carteira e painel do leiloeiro conectados · participações e
-            comprovantes conectados · Auditoria em demonstração
+            Ambiente demonstrativo · Valores simulados · Dados e verificações consultados na API
           </span>
         </div>
       </div>

@@ -24,10 +24,10 @@ O painel usa totais globais do servidor e cancela lotes sem lances, preservando 
 A carteira consulta saldo total, reservado e disponível reais e os lotes com
 reserva. Depósitos simulados são persistidos pela API, com confirmação, prevenção
 de duplo envio e recuperação da mesma solicitação após falha de rede.
-Participações e comprovantes públicos estão integrados; apenas a auditoria ainda exibe dados de demonstração. A conexão é recriada após renovação de JWT/logout; salas aguardam
+Participações, comprovantes e auditoria pública estão integrados com a API. A conexão é recriada após renovação de JWT/logout; salas aguardam
 ACK e novos snapshots antes de liberar lances. Refetch a cada 30 segundos e ao
 retomar foco complementa os eventos. A navegação da
-sala para a auditoria/comprovante aguarda as respectivas views integradas.
+sala para a auditoria e o comprovante usa as respectivas views integradas.
 
 Requisitos
 ----------
@@ -781,21 +781,21 @@ confirma saldos, sessões, recibo, auditoria e WebSocket após o restart, por
 até oito minutos. O relatório omite senhas, cookies e tokens. Sem essa flag,
 o relatório indica explicitamente que restart não foi validado.
 
-Frontend visual preview
+Frontend application
 
 Run npm ci and npm run dev:web, then open http://localhost:5173.
 The React/Vite application uses Tailwind and locally customized shadcn/Base UI components.
 Authentication, auctions, bidding, wallet and auctioneer management use the real API.
-The remaining audit preview is explicitly identified. Simulated money persists on the backend;
+Public receipts and audit reports use server data. Simulated money persists on the backend;
 pending mutations are journaled per account in sessionStorage. Never use real payment details.
 
-After the view PRs are merged, routes include: /auctions, /auctions/:auctionId, /login, /register, /wallet, /participations,
+Routes include: /auctions, /auctions/:auctionId, /login, /register, /wallet, /participations,
 /my-auctions, /auctions/new, /auctions/:auctionId/audit, /receipts/:receiptId and /design-system.
 The design system documents actual reusable buttons, fields, cards, dialogs, notifications
 and status components in light/dark modes. A sun/moon button toggles the saved theme; dark is the default.
 App only composes routed views.
-The audit preview still includes illustrative states and hashes. Its integration is pending;
-do not treat that preview as server verification.
+Audit verdicts and final hashes come from the server. No preview controls or fabricated
+hashes are used in public audit or receipt views.
 
 Frontend checks: npm run test:web, npm run build:web, npm run typecheck and npm run lint.
 Frontend tests cover money, mutation recovery, permissions, HTTP contracts and connection
@@ -899,3 +899,22 @@ não contém parâmetros privados e possui alternativa para cópia manual.
 npm run test:realtime cobre filtros/cursors privados, estados leading/outbid/
 processing/won/lost, reconexão, liquidação, comprovante anônimo sem Authorization,
 404/503, mídia persistida e indisponibilidade do catálogo externo.
+
+Auditoria pública integrada (FE-12)
+---------------------------------
+/auctions/:auctionId/audit usa E24, com paginação por cursor e verificação de toda
+a cadeia a cada consulta no servidor. VERIFIED, TAMPERED e INCOMPLETE são distintos.
+A página apresenta checkedAt, contagens esperada/real, verifiedThroughSequence,
+firstInvalidSequence quando informado e headHash quando disponível. Nenhum hash
+por lance é inventado: o contrato público expõe o hash final da verificação.
+
+Mudanças do lote invalidam a auditoria via Socket.IO; foco e consulta de 30s são
+fallback. Consulta HTTP funciona mesmo sem inscrição WebSocket. Durante refetch ou
+falha de rede, dados anteriores não conservam um selo de verificação atual. Lotes
+cancelados mantêm auditoria; 404 e cursor inválido têm recuperação explícita.
+O link JSON abre a mesma página pública da API, sem autenticação.
+
+npm run test:realtime testa adulteração/restauração de lance antigo fora da página
+visível, âncora com chave indisponível (INCOMPLETE), histórico vazio/cancelado,
+reconexão, evento de lance, perda da resposta e privacidade. Apenas bases efêmeras
+são modificadas. A inspeção manual no navegador é uma validação separada.
