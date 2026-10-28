@@ -162,6 +162,10 @@ export const test = base.extend<Fixtures>({
       await use({ sql, auditSql, actor, counters });
       expect(errors, 'Uncaught browser exceptions').toEqual([]);
     } finally {
+      await testInfo.attach('browser-errors', {
+        body: JSON.stringify(errors),
+        contentType: 'application/json',
+      });
       await Promise.all(contexts.map((context) => context.close()));
       await sql.end();
       await auditSql.end();
