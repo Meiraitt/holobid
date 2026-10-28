@@ -918,3 +918,31 @@ npm run test:realtime testa adulteração/restauração de lance antigo fora da 
 visível, âncora com chave indisponível (INCOMPLETE), histórico vazio/cancelado,
 reconexão, evento de lance, perda da resposta e privacidade. Apenas bases efêmeras
 são modificadas. A inspeção manual no navegador é uma validação separada.
+
+
+Browser journeys and accessibility (FE-13)
+
+    npx playwright install chromium
+    npm run test:e2e
+
+The root runner builds the API and frontend, creates two disposable PostgreSQL
+instances, applies migrations twice, and serves the production web build with
+its same-origin auth proxy. It ignores database URLs from your shell/.env and
+refuses remote database hosts. Docker is the default; the existing
+HOLOBID_TEST_DATABASE_MODE=process option also works with local PostgreSQL tools.
+Do not launch the workspace Playwright command directly.
+
+Three browser scenarios exercise independent seller, bidder A, bidder B and
+visitor contexts: publication, validation, bids, anti-sniping, reserve release,
+reconnect, settlement, receipt, audit tampering/incomplete verification, lost
+POST response recovery, session reload/logout, keyboard dialogs and both themes
+at 375px and desktop. axe checks WCAG A/AA rules; this is not a substitute for
+manual screen-reader, zoom and visual review. TCGdex/time/failures are controlled
+in the API test preload; application HTTP, Socket.IO, UI and databases are real.
+
+These checks use local HTTP (NODE_ENV=test); Secure-cookie behavior still needs
+the separate HTTPS deployment check. Never point the E2E runner at production.
+Reports/screenshots are ignored. Traces containing credentials are disabled.
+The browser CI job runs only for public repositories on standard GitHub runners;
+it does not add a paid service or install Chromium in the Northflank API image.
+The existing npm run check gate remains separate from npm run test:e2e.

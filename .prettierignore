@@ -27,3 +27,6 @@ apps/api/prisma/audit/migrations/
 
 # README is maintained as plain text, without a Markdown extension
 README
+
+**/playwright-report/
+**/test-results/
