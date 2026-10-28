@@ -92,8 +92,8 @@ export function ParticipationsView() {
         />
       ) : (
         <ul className="divide-y border-y" aria-label="Suas participações">
-          {items.map((item) => (
-            <ParticipationRow key={item.auctionId} item={item} />
+          {items.map((item, index) => (
+            <ParticipationRow key={item.auctionId} item={item} priority={index === 0} />
           ))}
         </ul>
       )}

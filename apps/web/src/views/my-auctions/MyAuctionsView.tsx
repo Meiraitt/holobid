@@ -181,13 +181,14 @@ export function MyAuctionsView() {
             <span className="w-36 text-right">Ações</span>
           </div>
           <ul className="divide-y divide-border">
-            {visible.map((auction) => (
+            {visible.map((auction, index) => (
               <li
                 key={auction.id}
                 className="grid items-center gap-5 bg-card p-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:gap-6"
               >
                 <div className="flex min-w-0 items-center gap-4">
                   <CardArtwork
+                    priority={index === 0}
                     src={mediaUrl(auction.imageUrl, apiClient.origin)}
                     alt={auction.title + ', ' + auction.setName}
                     className="h-24 min-h-0 w-16 shrink-0 p-0"

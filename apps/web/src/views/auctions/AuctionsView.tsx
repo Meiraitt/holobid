@@ -117,18 +117,21 @@ export function AuctionsView() {
         aria-labelledby={`auction-tab-${activeFilter}`}
         tabIndex={0}
         aria-busy={query.isPending}
-        className="min-h-80"
+        // Keep a stable results panel when the selected filter is empty or unavailable.
+        className="min-h-[32rem]"
       >
         {query.isPending ? (
           <AuctionGridSkeleton />
         ) : query.isError && !query.data ? (
           <EmptyState
+            className="min-h-[inherit] justify-center"
             title="Não foi possível carregar os leilões"
             description={errorMessage(query.error)}
             action={<Button onClick={() => void query.refetch()}>Tentar novamente</Button>}
           />
         ) : visibleAuctions.length === 0 ? (
           <EmptyState
+            className="min-h-[inherit] justify-center"
             title="Novas cartas chegam em breve"
             description={emptyMessages[activeFilter]}
             action={
