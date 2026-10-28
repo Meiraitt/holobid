@@ -6,6 +6,7 @@ import type { AuctionDetail } from '@holobid/contracts';
 
 import { CardArtwork } from '../../components/shared/card-artwork';
 import { EmptyState } from '../../components/shared/empty-state';
+import { CardPreviewSkeleton } from '../../components/shared/loading-skeletons';
 import { PageHeader } from '../../components/shared/page-header';
 import { StatusBadge } from '../../components/shared/status-badge';
 import { Button, buttonVariants } from '../../components/ui/button';
@@ -381,11 +382,6 @@ export function CreateAuctionView() {
           <h2 id="review-heading" className="font-display text-3xl font-semibold">
             Revise seu leilão
           </h2>
-          {cardId && details.isPending && (
-            <p role="status" className="mt-5">
-              Carregando detalhes da carta…
-            </p>
-          )}
           {details.isError && (
             <div role="alert" className="mt-5 space-y-3">
               <p>{errorMessage(details.error)}</p>
@@ -394,9 +390,12 @@ export function CreateAuctionView() {
               </Button>
             </div>
           )}
-          {selected ? (
+          {cardId && details.isPending ? (
+            <CardPreviewSkeleton />
+          ) : selected ? (
             <div className="mt-6 flex items-center gap-5 border-b border-border pb-6">
               <CardArtwork
+                priority
                 src={mediaUrl(selected.previewImageUrl, apiClient.origin)}
                 alt={`${selected.title}, ${selected.setName}`}
                 className="h-36 min-h-0 w-24 shrink-0 p-0"

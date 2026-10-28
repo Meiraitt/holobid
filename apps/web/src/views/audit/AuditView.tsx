@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 
 import { EmptyState } from '../../components/shared/empty-state';
+import { AuditSkeleton } from '../../components/shared/loading-skeletons';
 import { Money } from '../../components/shared/money';
 import { PageHeader } from '../../components/shared/page-header';
 import { PublicLink } from '../../components/shared/public-link';
@@ -63,7 +64,7 @@ function Audit({ id }: { id: string }) {
         <span className="break-all text-sm text-muted-foreground">Lote {id}</span>
       </div>
       {query.isPending ? (
-        <p role="status">Verificando histórico…</p>
+        <AuditSkeleton />
       ) : invalidPage || missing || !report ? (
         <EmptyState
           title={

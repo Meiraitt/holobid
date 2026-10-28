@@ -4,13 +4,16 @@ import type { UserRole } from '@holobid/contracts';
 
 import { safeDestination } from '../../auth/navigation';
 import { useAuth } from '../../providers/auth-provider';
+import { AuthFormSkeleton, PrivatePageSkeleton } from '../shared/loading-skeletons';
 import { Button, buttonVariants } from '../ui/button';
 
 export function SessionLoading() {
-  return (
-    <p role="status" className="py-12 text-center text-muted-foreground">
-      Verificando sua sessão…
-    </p>
+  const { pathname } = useLocation();
+
+  return pathname === '/login' || pathname === '/register' ? (
+    <AuthFormSkeleton registration={pathname === '/register'} />
+  ) : (
+    <PrivatePageSkeleton pathname={pathname} />
   );
 }
 

@@ -10,11 +10,13 @@ export function CardArtwork({
   alt,
   className,
   zoom = false,
+  priority = false,
 }: {
   src: string;
   alt: string;
   className?: string;
   zoom?: boolean;
+  priority?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [failedSource, setFailedSource] = useState<string | null>(null);
@@ -37,9 +39,13 @@ export function CardArtwork({
         <img
           src={src}
           alt={alt}
-          loading="lazy"
+          width={245}
+          height={337}
+          loading={priority ? 'eager' : 'lazy'}
+          fetchPriority={priority ? 'high' : undefined}
+          decoding="async"
           onError={() => setFailedSource(src)}
-          className="h-full max-h-full w-auto max-w-full object-contain drop-shadow-lg"
+          className="h-full max-h-full w-full object-contain drop-shadow-lg"
         />
       )}
       {zoom && !failed && (
@@ -54,7 +60,14 @@ export function CardArtwork({
             Ampliar imagem
           </Button>
           <Modal open={open} onOpenChange={setOpen} title={alt}>
-            <img src={src} alt={alt} className="mx-auto max-h-[65dvh] max-w-full object-contain" />
+            <img
+              src={src}
+              alt={alt}
+              width={735}
+              height={1011}
+              decoding="async"
+              className="mx-auto max-h-[65dvh] max-w-full object-contain"
+            />
           </Modal>
         </>
       )}

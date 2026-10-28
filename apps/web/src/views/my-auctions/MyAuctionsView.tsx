@@ -6,11 +6,13 @@ import type { AuctionStatus, OwnedAuctionDetail } from '@holobid/contracts';
 
 import { CardArtwork } from '../../components/shared/card-artwork';
 import { EmptyState } from '../../components/shared/empty-state';
+import { OwnedAuctionsSkeleton } from '../../components/shared/loading-skeletons';
 import { Money } from '../../components/shared/money';
 import { PageHeader } from '../../components/shared/page-header';
 import { StatusBadge } from '../../components/shared/status-badge';
 import { Button, buttonVariants } from '../../components/ui/button';
 import { NativeSelect } from '../../components/ui/input';
+import { Skeleton } from '../../components/ui/skeleton';
 import { formatDate } from '../../lib/format';
 import { useAuth } from '../../providers/auth-provider';
 import { apiClient } from '../../services';
@@ -88,24 +90,36 @@ export function MyAuctionsView() {
         <div>
           <dt className="text-sm text-muted-foreground">Recebido em arremates concluídos</dt>
           <dd className="mt-1 font-display text-4xl font-semibold text-foreground">
-            {summary.data ? <Money cents={summary.data.totalReceivedCents} /> : '—'}
+            {summary.data ? (
+              <Money cents={summary.data.totalReceivedCents} />
+            ) : summary.isPending ? (
+              <Skeleton className="h-10 w-36" />
+            ) : (
+              '—'
+            )}
           </dd>
         </div>
         <div>
           <dt className="text-sm text-muted-foreground">Arremates concluídos</dt>
           <dd className="mt-1 font-display text-3xl font-semibold">
-            {summary.data?.settledCount ?? '—'}
+            {summary.data?.settledCount ??
+              (summary.isPending ? <Skeleton className="h-9 w-16" /> : '—')}
           </dd>
         </div>
         <div>
           <dt className="text-sm text-muted-foreground">Encerrados sem vencedor</dt>
           <dd className="mt-1 font-display text-3xl font-semibold">
-            {summary.data?.withoutWinnerCount ?? '—'}
+            {summary.data?.withoutWinnerCount ??
+              (summary.isPending ? <Skeleton className="h-9 w-16" /> : '—')}
           </dd>
         </div>
       </dl>
 
-      {summary.isPending && <p role="status">Carregando seus totais…</p>}
+      {summary.isPending && (
+        <p role="status" className="sr-only">
+          Carregando seus totais…
+        </p>
+      )}
       {summary.isError && (
         <div role="alert">
           <p>Não foi possível atualizar os totais. {errorMessage(summary.error)}</p>
@@ -135,7 +149,7 @@ export function MyAuctionsView() {
       </div>
 
       {query.isPending ? (
-        <p role="status">Carregando seus lotes…</p>
+        <OwnedAuctionsSkeleton />
       ) : query.isError && !query.data ? (
         <EmptyState
           title="Não foi possível carregar seus lotes"

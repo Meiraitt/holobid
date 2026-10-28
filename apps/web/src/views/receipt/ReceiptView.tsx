@@ -2,9 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router';
 
 import { EmptyState } from '../../components/shared/empty-state';
+import { ReceiptSkeleton } from '../../components/shared/loading-skeletons';
 import { PageHeader } from '../../components/shared/page-header';
 import { PublicLink } from '../../components/shared/public-link';
 import { Button, buttonVariants } from '../../components/ui/button';
+import { Skeleton } from '../../components/ui/skeleton';
 import { ApiRequestError, errorMessage } from '../../services/api-error';
 
 import { receiptOptions } from './receipt-queries';
@@ -29,12 +31,14 @@ function Receipt({ code }: { code: string }) {
           action={
             query.isSuccess ? (
               <PublicLink path={`/receipts/${encodeURIComponent(code)}`} />
+            ) : query.isPending ? (
+              <Skeleton className="h-11 w-44 shrink-0" />
             ) : undefined
           }
         />
       </div>
       {query.isPending ? (
-        <p role="status">Carregando comprovante…</p>
+        <ReceiptSkeleton />
       ) : query.isError ? (
         <EmptyState
           title={missing ? 'Comprovante não encontrado' : 'Comprovante indisponível'}

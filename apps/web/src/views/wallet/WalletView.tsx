@@ -2,9 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import { EmptyState } from '../../components/shared/empty-state';
+import { WalletSkeleton } from '../../components/shared/loading-skeletons';
 import { Money } from '../../components/shared/money';
 import { PageHeader } from '../../components/shared/page-header';
 import { Button } from '../../components/ui/button';
+import { Skeleton } from '../../components/ui/skeleton';
 import { useAuth } from '../../providers/auth-provider';
 import { errorMessage } from '../../services/api-error';
 
@@ -28,10 +30,14 @@ export function WalletView() {
 
   if (!wallet) {
     return (
-      <section className="mx-auto max-w-5xl space-y-8 py-5">
-        <PageHeader title="Carteira" description="Seu saldo e os valores reservados nos leilões." />
+      <section className="mx-auto max-w-5xl py-5 sm:py-8">
+        <PageHeader
+          title="Carteira"
+          description="Seu saldo, sem perder de vista os lances."
+          action={query.isPending ? <Skeleton className="h-11 w-52 shrink-0" /> : undefined}
+        />
         {query.isPending ? (
-          <p role="status">Carregando sua carteira…</p>
+          <WalletSkeleton />
         ) : (
           <EmptyState
             title="Carteira indisponível"

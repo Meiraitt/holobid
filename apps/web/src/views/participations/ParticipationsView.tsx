@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 
 import { EmptyState } from '../../components/shared/empty-state';
+import { ParticipationListSkeleton } from '../../components/shared/loading-skeletons';
 import { PageHeader } from '../../components/shared/page-header';
 import { Button, buttonVariants } from '../../components/ui/button';
 import { useAuth } from '../../providers/auth-provider';
@@ -72,7 +73,7 @@ export function ParticipationsView() {
         ))}
       </div>
       {query.isPending ? (
-        <p role="status">Carregando suas participações…</p>
+        <ParticipationListSkeleton />
       ) : query.isError && !query.data ? (
         <EmptyState
           title="Participações indisponíveis"
@@ -120,7 +121,7 @@ export function ParticipationsView() {
         </Button>
       )}
       {query.isFetching && !query.isPending && (
-        <p role="status" className="text-sm text-muted-foreground">
+        <p role="status" className="sr-only">
           Atualizando participações…
         </p>
       )}
