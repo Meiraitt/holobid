@@ -43,14 +43,17 @@ test('seller, two bidders and visitor complete the auction through real HTTP and
 
   await test.step('refusal persists, preserves the typed amount and focuses the invalid input', async () => {
     const input = a.page.getByLabel('Seu lance (R$)', { exact: true });
+    const refusal = a.page.getByRole('dialog', { name: 'Lance não enviado', exact: true });
 
     await expect(input).toBeEnabled();
     await input.fill('99,00');
     await a.page.getByRole('button', { name: /^Dar lance/ }).click();
+    await expect(refusal).toBeVisible();
     await expect(input).toHaveAttribute('aria-invalid', 'true');
     await expect(input).toHaveValue('99,00');
     await expect(input).toBeFocused();
-    await a.page.getByRole('button', { name: 'Fechar notificação' }).last().click();
+    await refusal.hover();
+    await refusal.getByRole('button', { name: 'Fechar notificação' }).click();
     await expect(a.page.locator('#bid-amount-error')).toContainText('pelo menos');
   });
 
@@ -377,17 +380,61 @@ test('all views have named controls, both themes and mobile reflow; dialogs work
   await visitor.page.goto('/auctions');
   await visitor.page.reload();
   await expect(visitor.page.getByRole('button', { name: 'Ativar tema escuro' })).toBeVisible();
-  await visitor.page.getByRole('button', { name: 'Abrir menu' }).focus();
+
+  const menuTrigger = visitor.page.getByRole('button', { name: /^(Abrir|Fechar) menu$/ });
+  const mobileNav = visitor.page.getByRole('navigation', { name: 'Menu móvel' });
+  const skipLink = visitor.page.getByRole('link', { name: 'Ir para o conteúdo' });
+
+  await menuTrigger.focus();
   await visitor.page.keyboard.press('Enter');
-  await expect(visitor.page.getByRole('dialog')).toBeVisible();
+  await expect(menuTrigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(mobileNav).toBeVisible();
+  await expect(visitor.page.getByRole('dialog')).toHaveCount(0);
   await accessible(visitor.page);
   await visitor.page.keyboard.press('Tab');
-  await expect(visitor.page.getByRole('dialog')).toContainText('Entrar');
+  await expect(mobileNav.getByRole('link', { name: 'Leilões', exact: true })).toBeFocused();
+  await expect(mobileNav).toContainText('Entrar');
   expect(
-    await visitor.page.evaluate(() => Boolean(document.activeElement?.closest('[role="dialog"]'))),
-  ).toBe(true);
+    await visitor.page.evaluate(() => document.body.style.overflow),
+    'The navigation does not lock page scrolling',
+  ).not.toBe('hidden');
   await visitor.page.keyboard.press('Escape');
-  await expect(visitor.page.getByRole('button', { name: 'Abrir menu' })).toBeFocused();
+  await expect(menuTrigger).toBeFocused();
+  await expect(menuTrigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(mobileNav).toHaveCount(0);
+
+  await menuTrigger.click();
+  await visitor.page.getByText('Cartas Pokémon. Leilões com histórico público.').click();
+  await expect(menuTrigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(skipLink).not.toBeFocused();
+  expect(await skipLink.evaluate((link) => link.getBoundingClientRect().width)).toBe(1);
+
+  await menuTrigger.click();
+  await menuTrigger.click();
+  await expect(menuTrigger).toBeFocused();
+  await expect(menuTrigger).toHaveAttribute('aria-expanded', 'false');
+
+  await menuTrigger.click();
+  await mobileNav.getByRole('link', { name: 'Entrar', exact: true }).click();
+  await expect(visitor.page).toHaveURL(/\/login$/);
+  await expect(menuTrigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(visitor.page.getByRole('main')).toBeFocused();
+
+  await visitor.page.goto('/auctions');
+  await visitor.page.keyboard.press('Tab');
+  await expect(skipLink).toBeFocused();
+  expect(await skipLink.evaluate((link) => link.getBoundingClientRect().width)).toBeGreaterThan(1);
+  await visitor.page.keyboard.press('Enter');
+  await expect(visitor.page.getByRole('main')).toBeFocused();
+
+  const themeToggle = visitor.page.getByRole('button', { name: 'Ativar tema escuro' });
+
+  await expect(themeToggle).toHaveCSS('border-top-width', '0px');
+  await expect(themeToggle.locator('svg').first()).toHaveCSS('transition-duration', '0s');
+  await themeToggle.click();
+  await expect(visitor.page.getByRole('button', { name: 'Ativar tema claro' })).toBeVisible();
+  await visitor.page.reload();
+  await expect(visitor.page.locator('html')).toHaveClass(/dark/);
 
   await seller.page.setViewportSize({ width: 1440, height: 1000 });
   await seller.page.goto('/my-auctions');

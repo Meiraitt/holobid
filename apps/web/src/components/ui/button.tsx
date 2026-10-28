@@ -6,7 +6,7 @@ import { LoaderCircle } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 const buttonStyles = cva(
-  'inline-flex shrink-0 items-center justify-center gap-2 rounded-sm border border-transparent font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-55 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-ring [&_svg]:size-4 [&_svg]:shrink-0',
+  'inline-flex shrink-0 items-center justify-center gap-2 rounded-sm border border-transparent font-semibold transition-[color,background-color,border-color,box-shadow,translate] duration-200 ease-out motion-safe:active:enabled:translate-y-px motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-55 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-ring [&_svg]:size-4 [&_svg]:shrink-0',
   {
     variants: {
       variant: {
@@ -49,7 +49,9 @@ export function Button({
       aria-busy={loading || undefined}
       {...props}
     >
-      {loading && <LoaderCircle aria-hidden="true" className="animate-spin" />}
+      {loading && (
+        <LoaderCircle aria-hidden="true" className="animate-spin motion-reduce:animate-none" />
+      )}
       {children}
     </ButtonPrimitive>
   );
