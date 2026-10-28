@@ -312,9 +312,11 @@ export function AppLayout() {
             <p>Cartas Pokémon. Leilões com histórico público.</p>
           </div>
           <div className="flex flex-wrap items-center gap-5">
-            <Link className="text-link" to="/design-system">
-              Design system
-            </Link>
+            {import.meta.env.DEV && (
+              <Link className="text-link" to="/design-system">
+                Design system
+              </Link>
+            )}
             <span>Catálogo TCGdex · Projeto demonstrativo</span>
           </div>
         </div>
