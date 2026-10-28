@@ -21,3 +21,6 @@ outputs
 .github
 .vscode
 .idea
+
+**/.vercel
+**/playwright-report
