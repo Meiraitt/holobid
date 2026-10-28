@@ -44,7 +44,8 @@
     "test:realtime": "npm run build:api && npm run test:realtime --workspace=@holobid/api",
     "test:e2e": "npm run build:api && node apps/api/scripts/test-database.mjs --web-e2e",
     "build:web:deploy": "node scripts/build-web-deploy.mjs",
-    "test:web:deploy": "node scripts/web-deploy-smoke.mjs"
+    "test:web:deploy": "node scripts/web-deploy-smoke.mjs",
+    "test:web:release": "node scripts/web-release-acceptance.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

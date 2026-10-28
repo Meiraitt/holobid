@@ -940,8 +940,9 @@ at 375px and desktop. axe checks WCAG A/AA rules; this is not a substitute for
 manual screen-reader, zoom and visual review. TCGdex/time/failures are controlled
 in the API test preload; application HTTP, Socket.IO, UI and databases are real.
 
-These checks use local HTTP (NODE_ENV=test); Secure-cookie behavior still needs
-the separate HTTPS deployment check. Never point the E2E runner at production.
+These checks use local HTTP (NODE_ENV=development) so the real settlement worker
+runs while the test preload controls its clock. Secure-cookie behavior belongs
+to the separate HTTPS deployment check. Never point this runner at production.
 Reports/screenshots are ignored. Traces containing credentials are disabled.
 The browser CI job runs only for public repositories on standard GitHub runners;
 it does not add a paid service or install Chromium in the Northflank API image.
@@ -949,6 +950,9 @@ The existing npm run check gate remains separate from npm run test:e2e.
 
 
 Separate frontend deployment (FE-14)
+
+Public frontend: https://holobid.vercel.app
+Public API: https://holobid--meiraitt--fmvj6fdxbbcx.code.run/api/v1
 
 Use a personal Vercel Hobby project and its free vercel.app domain. Import this
 repository with Root Directory set to the repository root (not apps/web).
@@ -975,7 +979,7 @@ Do not use wildcard CORS or whitelist arbitrary preview domains. Preview builds
 are useful visually but cannot authenticate until their exact origin is allowed;
 use the stable production domain for the integrated demo.
 
-Release acceptance (pending until a Vercel account/deployment is available):
+Repeatable release acceptance:
   1. Confirm Hobby, repository root, Node 24, successful build and free domain.
   2. Configure the exact WEB_ORIGIN on Northflank; verify health/ready and CORS.
   3. With third-party cookies blocked, register/login, reload a private deep link,
@@ -987,10 +991,31 @@ Release acceptance (pending until a Vercel account/deployment is available):
   6. Run npm run test:web:deploy -- --web https://YOUR-PROJECT.vercel.app
      for read-only routing, CORS, anonymous auth and public WebSocket probes.
 
-The automated release probe does not replace the authenticated financial/browser
-acceptance. It never creates users, lots or transactions. Rollback: promote the
-previous frontend deployment, keeping a backend with compatible contracts and
-the same WEB_ORIGIN. No frontend deploy should reset databases or rotate keys.
+The read-only probe never creates users, lots or transactions. To exercise the
+published UI through Chromium with third-party cookies blocked:
+
+    npm run test:web:release -- --web https://holobid.vercel.app --allow-write
+
+This explicitly creates two demo bidders, simulated deposits and one auction.
+It uses the documented seed auctioneer, the live TCGdex catalog and the real
+settlement clock. Allow several minutes. It checks first-party Secure/HttpOnly
+cookies, reload, two independent bidders, live updates, reconnect, balances,
+public receipt/audit and logout. It never accesses SQL, resets data, changes
+server time or tampers with production history. Reports/screenshots stay in the
+ignored apps/web/test-results/release directory. This write-enabled acceptance
+is manual and is never run automatically in GitHub, Northflank or Vercel builds.
+
+Acceptance on 2026-10-28 passed: 12 read-only HTTPS probes plus public WebSocket;
+5 browser release steps (155 HTTP requests, 4 auction events, no uncaught browser
+errors); and 12 API financial checks (61 HTTP requests), including settlement
+with all clients disconnected. The independent API check confirmed the winner's
+debit, the loser's released reserve and the exact seller credit. Vercel Hobby,
+Northflank Free and the existing Neon databases remain in use. Production tracks
+main; preview origins are intentionally not trusted for authentication.
+
+Rollback: promote the previous frontend deployment, keeping a backend with
+compatible contracts and the same WEB_ORIGIN. No frontend deploy should reset
+databases or rotate keys.
 
 Official configuration references:
 https://vercel.com/docs/project-configuration/vercel-json
