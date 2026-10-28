@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Route, Routes } from 'react-router-dom';
 
 import { GuestOnly, RequireAuth } from './components/auth/route-guards';
 import { AppLayout } from './components/layout/app-layout';
@@ -7,6 +7,7 @@ import { AuctionsView } from './views/auctions/AuctionsView';
 import { AuditView } from './views/audit/AuditView';
 import { CreateAuctionView } from './views/create-auction/CreateAuctionView';
 import { DesignSystemView } from './views/design-system/DesignSystemView';
+import { LandingView } from './views/landing/LandingView';
 import { LoginView } from './views/login/LoginView';
 import { MyAuctionsView } from './views/my-auctions/MyAuctionsView';
 import { NotFoundView } from './views/not-found/NotFoundView';
@@ -19,7 +20,7 @@ export function App() {
   return (
     <Routes>
       <Route element={<AppLayout />}>
-        <Route index element={<Navigate to="/auctions" replace />} />
+        <Route index element={<LandingView />} />
         <Route path="/design-system" element={<DesignSystemView />} />
         <Route path="/auctions" element={<AuctionsView />} />
         <Route element={<GuestOnly />}>
