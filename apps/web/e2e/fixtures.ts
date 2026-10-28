@@ -69,7 +69,13 @@ export async function publish(page: Page): Promise<AuctionDetail> {
 
   expect(result.status()).toBe(201);
 
-  return result.json();
+  const lot: AuctionDetail = await result.json();
+
+  // The UI chooses startsAt from the browser clock; advance the controlled API clock
+  // past that instant before reading the room, without waiting on wall-clock time.
+  configure({ now: Date.parse(lot.startsAt) + 1000 });
+
+  return lot;
 }
 
 export async function bid(page: Page, value: string) {

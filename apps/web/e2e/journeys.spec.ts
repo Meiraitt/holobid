@@ -60,7 +60,7 @@ test('seller, two bidders and visitor complete the auction through real HTTP and
     await bid(b.page, '110,00');
     await a.context.setOffline(false);
     await expect(a.page.getByText('Você foi superado', { exact: true })).toBeVisible();
-    await expect(a.page.getByText(/Reservado neste lote:.*0,00/)).toBeVisible();
+    await expect(a.page.getByText(/Reservado neste lote:\s*R\$\s*0,00$/)).toBeVisible();
     await a.page.goto('/wallet');
     await expect(a.page.getByLabel('Resumo do saldo')).toContainText('500,00');
   });
