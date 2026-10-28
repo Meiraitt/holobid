@@ -1,3 +1,5 @@
+import { Link } from 'react-router';
+
 import type { AuctionDetail } from '@holobid/contracts';
 
 import { formatMoney } from '../../../lib/format';
@@ -47,7 +49,12 @@ export function AuctionOutcome({ auction }: { auction: AuctionDetail }) {
       </p>
       {outcome?.kind === 'SOLD' && (
         <p className="break-all text-xs text-muted-foreground">
-          Código do comprovante: {outcome.receiptCode}
+          <Link
+            to={`/receipts/${encodeURIComponent(outcome.receiptCode)}`}
+            className="text-info underline underline-offset-4"
+          >
+            Ver comprovante público
+          </Link>
         </p>
       )}
     </div>

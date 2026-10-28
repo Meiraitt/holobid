@@ -8,15 +8,24 @@ import pg from 'pg';
 import { io } from 'socket.io-client';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import type { AuctionDetail, AuthResponse, CredentialsInput } from '@holobid/contracts';
+import type {
+  AuctionDetail,
+  AuthResponse,
+  CredentialsInput,
+  PublicReceipt,
+} from '@holobid/contracts';
 
 import { SessionController } from '../auth/session-controller';
 import { clearPrivateQueries, createQueryClient, queryKeys } from '../lib/query-client';
 import { ApiClient } from '../services/api-client';
 import { ApiRequestError, errorMessage } from '../services/api-error';
+import { mediaUrl } from '../services/media-url';
 import { createOperation } from '../services/operations';
 import { resourceServices } from '../services/resource-services';
 import { myBidOptions, roomOptions } from '../views/auction-room/room-queries';
+import { participationResult } from '../views/participations/components/ParticipationRow';
+import { participationOptions } from '../views/participations/participation-queries';
+import { receiptOptions } from '../views/receipt/receipt-queries';
 import { depositAttempt } from '../views/wallet/deposit-attempt';
 import { reservationOptions, walletOptions } from '../views/wallet/wallet-queries';
 
@@ -30,6 +39,7 @@ const nativeFetch = globalThis.fetch;
 let httpRequests = 0;
 let depositRequests = 0;
 let loseDepositResponse = false;
+const publicAuthHeaders: string[] = [];
 let wsEvents = 0;
 const dispose: Array<() => void> = [];
 const configure = (patch: object) =>
@@ -235,6 +245,9 @@ beforeAll(async () => {
     const headers = new Headers(options.headers);
 
     headers.set('Origin', webOrigin);
+    if (String(url).includes('/receipts/') && headers.has('Authorization')) {
+      publicAuthHeaders.push(String(url));
+    }
 
     const response = await nativeFetch(url, { ...options, headers });
 
@@ -645,10 +658,16 @@ describe('wallet view services with real HTTP, persistence and WebSocket', () =>
           availableCents: 8900,
         });
         expect(
-          observedC.reservations.getCurrentResult().data?.pages.flatMap((page) => page.items),
+          observedC.reservations
+            .getCurrentResult()
+            .data?.pages.flatMap((page) => page.items)
+            .filter((item) => item.reservedForThisAuctionCents > 0),
         ).toEqual([]);
         expect(
-          observedD.reservations.getCurrentResult().data?.pages.flatMap((page) => page.items),
+          observedD.reservations
+            .getCurrentResult()
+            .data?.pages.flatMap((page) => page.items)
+            .filter((item) => item.reservedForThisAuctionCents > 0),
         ).toEqual([]);
       },
       { timeout: 10000, interval: 100 },
@@ -688,5 +707,227 @@ describe('wallet view services with real HTTP, persistence and WebSocket', () =>
     await vi.waitFor(() =>
       expect(observedC.wallet.getCurrentResult().data?.totalCents).toBe(17235),
     );
+  });
+});
+
+let participantE: Awaited<ReturnType<typeof person>>;
+let participantF: Awaited<ReturnType<typeof person>>;
+const receiptLots: AuctionDetail[] = [];
+let publicReceipt: PublicReceipt;
+const publicApi = resourceServices(new ApiClient(origin));
+
+function observeParticipations(
+  context: Awaited<ReturnType<typeof person>>,
+  filter: 'all' | 'active' | 'won',
+  limit = 1,
+) {
+  const observer = new InfiniteQueryObserver(context.cache, {
+    ...participationOptions(context.id, filter, context.api.account, limit),
+    refetchInterval: false,
+  });
+  const off = observer.subscribe(() => {});
+
+  dispose.push(() => {
+    off();
+    observer.destroy();
+  });
+  context.manager.start();
+
+  return observer;
+}
+
+describe('participation and receipt integration over HTTP and WebSocket', () => {
+  let history: ReturnType<typeof observeParticipations>;
+  let won: ReturnType<typeof observeParticipations>;
+  let wallet: ReturnType<typeof observeWallet>;
+  const items = () => history.getCurrentResult().data?.pages.flatMap((page) => page.items) ?? [];
+
+  it('loads empty server filters, then connects the private participation channel', async () => {
+    configure({ now: now + 720000, reconcileSettlements: false });
+    participantE = await person('participation-e');
+    participantF = await person('participation-f');
+    await participantE.api.wallet.deposit(createOperation({ amountCents: 10000 }));
+    await participantF.api.wallet.deposit(createOperation({ amountCents: 10000 }));
+    for (let index = 0; index < 2; index++) {
+      const result = await seller.api.auctions.create(
+        createOperation({
+          externalItemId: 'base1-58',
+          startingPriceCents: 1000,
+          minimumIncrementCents: 100,
+          startsAt: new Date(now + 719000).toISOString(),
+          endsAt: new Date(now + 1320000).toISOString(),
+        }),
+      );
+
+      receiptLots.push(result.data as AuctionDetail);
+    }
+
+    history = observeParticipations(participantE, 'all');
+    won = observeParticipations(participantE, 'won');
+    wallet = observeWallet(participantE);
+    await vi.waitFor(() => {
+      expect(participantE.manager.getSnapshot().phase).toBe('ready');
+      expect(history.getCurrentResult().isSuccess).toBe(true);
+      expect(items()).toEqual([]);
+      expect(won.getCurrentResult().data?.pages[0]?.items).toEqual([]);
+    });
+  });
+
+  it('receives leading/outbid positions, filters and cursor pagination without manual refresh', async () => {
+    await participantE.api.auctions.bid(receiptLots[0]!.id, createOperation({ amountCents: 1000 }));
+    await participantF.api.auctions.bid(receiptLots[0]!.id, createOperation({ amountCents: 1100 }));
+    await participantE.api.auctions.bid(receiptLots[1]!.id, createOperation({ amountCents: 1500 }));
+    await vi.waitFor(() => expect(history.getCurrentResult().hasNextPage).toBe(true));
+    await history.fetchNextPage();
+    expect(
+      items()
+        .map((item) => item.state)
+        .sort(),
+    ).toEqual(['LEADING', 'OUTBID']);
+    expect(items().find((item) => item.state === 'OUTBID')?.rank).toBe(2);
+    expect(items().every((item) => !participationResult(item).receiptCode)).toBe(true);
+    expect(won.getCurrentResult().data?.pages[0]?.items).toEqual([]);
+    expect(
+      (await participantE.api.account.participations({ filter: 'active' })).items,
+    ).toHaveLength(2);
+    expect(participantE.events).toContain('participation.updated');
+  });
+
+  it('isolates account/filter cursors and rejects anonymous and auctioneer access', async () => {
+    const cursor = history.getCurrentResult().data!.pages[0]!.nextCursor!;
+
+    await expect(
+      participantF.api.account.participations({ filter: 'all', cursor }),
+    ).rejects.toMatchObject({ status: 400 });
+    await expect(
+      participantE.api.account.participations({ filter: 'won', cursor }),
+    ).rejects.toMatchObject({ status: 400 });
+    await expect(publicApi.account.participations()).rejects.toMatchObject({ status: 401 });
+    await expect(seller.api.account.participations()).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('recovers participation changes missed during a disconnected transport', async () => {
+    await vi.waitFor(() => expect(participantE.manager.getSnapshot().phase).toBe('ready'));
+
+    const socket = participantE.sockets.at(-1)!;
+
+    socket.io.reconnection(false);
+    socket.io.engine.close();
+    await vi.waitFor(() => expect(participantE.manager.getSnapshot().phase).toBe('disconnected'));
+    await participantF.api.auctions.bid(receiptLots[1]!.id, createOperation({ amountCents: 1600 }));
+    expect(items().some((item) => item.state === 'LEADING')).toBe(true);
+    socket.io.reconnection(true);
+    participantE.manager.retry();
+    await vi.waitFor(() => expect(items().map((item) => item.state)).toEqual(['OUTBID', 'OUTBID']));
+    await participantE.api.auctions.bid(receiptLots[1]!.id, createOperation({ amountCents: 1700 }));
+    await vi.waitFor(() => expect(items().some((item) => item.state === 'LEADING')).toBe(true));
+  });
+
+  it('keeps the outcome pending and the reservation visible after the deadline until settlement', async () => {
+    configure({ now: now + 1320001 });
+    await history.refetch();
+    await wallet.reservations.refetch();
+
+    const pending = items().find((item) => item.auctionId === receiptLots[1]!.id)!;
+
+    expect(pending.state).toBe('PROCESSING');
+    expect(participationResult(pending).receiptCode).toBeNull();
+    expect((await participantE.api.account.participations({ filter: 'won' })).items).toEqual([]);
+    expect(
+      wallet.reservations
+        .getCurrentResult()
+        .data?.pages.flatMap((page) => page.items)
+        .some((item) => item.reservedForThisAuctionCents === 1700),
+    ).toBe(true);
+  });
+
+  it('receives final WON/LOST and public receipt codes only after the real scheduler settles', async () => {
+    configure({ reconcileSettlements: true });
+    await vi.waitFor(
+      () => {
+        expect(
+          items()
+            .map((item) => item.state)
+            .sort(),
+        ).toEqual(['LOST', 'WON']);
+        expect(won.getCurrentResult().data?.pages[0]?.items).toHaveLength(1);
+      },
+      { timeout: 10000, interval: 100 },
+    );
+    configure({ reconcileSettlements: false });
+
+    const winner = items().find((item) => item.state === 'WON')!;
+    const loser = items().find((item) => item.state === 'LOST')!;
+
+    expect(participationResult(loser).receiptCode).toBeNull();
+    expect(participationResult(winner).receiptCode).toMatch(/^[A-Za-z0-9_-]{32}$/);
+    publicReceipt = await participantE.cache.fetchQuery(
+      receiptOptions(winner.receiptCode!, publicApi.receipt),
+    );
+    expect(publicReceipt.amountCents).toBe(1700);
+    expect(publicReceipt.winnerPseudonym).toBe(winner.myPseudonym);
+    expect(publicReceipt.auctionId).toBe(receiptLots[1]!.id);
+    expect(publicReceipt.finalAuditHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('serves the immutable receipt and stored artwork publicly while the upstream is offline', async () => {
+    configure({ provider: 'offline' });
+
+    const anonymous = await publicApi.receipt(publicReceipt.publicCode);
+    const authenticated = await participantF.api.receipt(publicReceipt.publicCode);
+    const picture = await fetch(mediaUrl(anonymous.imageUrl, origin));
+
+    expect(anonymous).toEqual(publicReceipt);
+    expect(authenticated).toEqual(anonymous);
+    expect(picture.status).toBe(200);
+    expect(picture.headers.get('Content-Type')).toContain('image/');
+    expect((await picture.arrayBuffer()).byteLength).toBeGreaterThan(100);
+
+    const serialized = JSON.stringify(anonymous);
+
+    for (const secret of [
+      participantE.id,
+      participantF.id,
+      participantE.credentials.email,
+      participantF.credentials.email,
+      'bidderId',
+      'sellerId',
+      'password',
+      'accessToken',
+    ]) {
+      expect(serialized).not.toContain(secret);
+    }
+
+    expect(publicAuthHeaders).toEqual([]);
+    configure({ provider: 'fixture' });
+  });
+
+  it('returns real not-found and temporary-unavailable receipt failures without a fabricated document', async () => {
+    for (const code of ['invalid', 'x'.repeat(32)]) {
+      await expect(publicApi.receipt(code)).rejects.toMatchObject({ status: 404 });
+    }
+
+    const stored = (
+      await sql.query('SELECT "itemSnapshot" FROM "Receipt" WHERE "publicCode"=$1', [
+        publicReceipt.publicCode,
+      ])
+    ).rows[0].itemSnapshot;
+
+    try {
+      await sql.query('UPDATE "Receipt" SET "itemSnapshot"=\'{}\'::jsonb WHERE "publicCode"=$1', [
+        publicReceipt.publicCode,
+      ]);
+      await expect(publicApi.receipt(publicReceipt.publicCode)).rejects.toMatchObject({
+        status: 503,
+        problem: { code: 'RECEIPT_UNAVAILABLE' },
+      });
+    } finally {
+      await sql.query('UPDATE "Receipt" SET "itemSnapshot"=$1::jsonb WHERE "publicCode"=$2', [
+        JSON.stringify(stored),
+        publicReceipt.publicCode,
+      ]);
+    }
+
+    expect(await publicApi.receipt(publicReceipt.publicCode)).toEqual(publicReceipt);
   });
 });
