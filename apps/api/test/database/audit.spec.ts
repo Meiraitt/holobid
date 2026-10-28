@@ -232,6 +232,7 @@ describe('Authenticated audit and cross-database recovery', () => {
     'snapshot',
     'rules',
     'order',
+    'fake-middle',
     'fake-tail',
     'first',
     'middle',
@@ -301,6 +302,23 @@ describe('Authenticated audit and cross-database recovery', () => {
     if (change === 'fake-tail') {
       await db.client.bid.create({
         data: { ...bid, id: randomUUID(), sequence: 4, previousHash: original.auditHead },
+      });
+    }
+
+    if (change === 'fake-middle') {
+      await db.transaction(async (tx) => {
+        await tx.bid.update({ where: { id: original.bids[2]!.id }, data: { sequence: 4 } });
+        await tx.bid.update({ where: { id: bid.id }, data: { sequence: 3 } });
+        await tx.bid.create({
+          data: {
+            ...bid,
+            id: randomUUID(),
+            sequence: 2,
+            acceptedAt: new Date(
+              Math.floor((original.bids[0]!.acceptedAt.getTime() + bid.acceptedAt.getTime()) / 2),
+            ),
+          },
+        });
       });
     }
 
