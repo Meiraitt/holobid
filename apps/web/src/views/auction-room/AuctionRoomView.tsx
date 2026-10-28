@@ -9,12 +9,12 @@ import { Button, buttonVariants } from '../../components/ui/button';
 import { Field, Input } from '../../components/ui/input';
 import { toast } from '../../components/ui/toast';
 import { formatDate, formatMoney } from '../../lib/format';
-import { queryKeys } from '../../lib/query-client';
 import { useAuth } from '../../providers/auth-provider';
 import { useRealtimeRoom } from '../../providers/realtime-provider';
-import { api, apiClient } from '../../services';
+import { apiClient } from '../../services';
 import { ApiRequestError, errorMessage } from '../../services/api-error';
 import { mediaUrl } from '../../services/media-url';
+import { walletOptions } from '../wallet/wallet-queries';
 
 import { AuctionOutcome, confirmedOutcome } from './components/AuctionOutcome';
 import { BidForm } from './components/BidForm';
@@ -49,11 +49,8 @@ function Room({ id }: { id: string }) {
     enabled: Boolean(isBidder && auction && subscribed),
   });
   const wallet = useQuery({
-    queryKey: queryKeys.private(user?.id ?? '', 'wallet'),
-    queryFn: ({ signal }) => api.wallet.get(signal),
+    ...walletOptions(user?.id ?? ''),
     enabled: Boolean(isBidder && auction && subscribed),
-    refetchInterval: 30000,
-    refetchOnWindowFocus: 'always',
   });
   const now = useServerClock(
     room.data

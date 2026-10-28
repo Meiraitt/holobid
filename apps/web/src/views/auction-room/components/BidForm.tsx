@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router';
 
 import type { AuctionDetail, MyAuctionState, WalletResponse } from '@holobid/contracts';
 
@@ -214,7 +215,10 @@ export function BidForm({
       </p>
       {minimum !== null && wallet.availableCents < minimum && !position.isLeading && !pending && (
         <p className="border-l-2 border-warning pl-3 text-sm text-warning">
-          Seu saldo disponível não cobre o lance mínimo de {formatMoney(minimum)}.
+          Seu saldo disponível não cobre o lance mínimo de {formatMoney(minimum)}.{' '}
+          <Link to="/wallet" className="ml-1 underline underline-offset-4">
+            Adicionar saldo simulado
+          </Link>
         </p>
       )}
     </form>
