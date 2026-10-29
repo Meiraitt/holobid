@@ -5,6 +5,7 @@
 **/.env
 **/.env.*
 **/*.[mM][dD]
+!/README.md
 **/*.log
 **/*.pem
 **/*.key

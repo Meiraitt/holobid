@@ -1,5 +1,6 @@
-# Local planning documents: do not publish Markdown files.
+# Local planning documents stay private; only the root README is published.
 *.[mM][dD]
+!/README.md
 /outputs/
 /work/
 /.plans/
@@ -39,7 +40,7 @@ playwright-report/
 test-results/
 reports/
 
-# Keep README (without extension), migrations, lockfiles,
+# Keep README.md, migrations, lockfiles,
 # source code, tests and small public seed fixtures versioned.
 
 # Prisma clients are generated during npm ci, never committed.

@@ -9,6 +9,7 @@ package-lock.json
 
 # Local documents, secrets and reports
 **/*.[mM][dD]
+!/README.md
 **/.env
 **/.env.*
 **/*.log
@@ -24,9 +25,6 @@ secrets/
 apps/api/fixtures/
 apps/api/prisma/migrations/
 apps/api/prisma/audit/migrations/
-
-# README is maintained as plain text, without a Markdown extension
-README
 
 **/playwright-report/
 **/test-results/
