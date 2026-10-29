@@ -13,7 +13,7 @@
   },
   "packageManager": "npm@11.21.1",
   "scripts": {
-    "check": "npm run format:check && npm run lint && npm run typecheck && npm run build && npm run test:web && npm run test:api && npm run test:db && npm run test:http && npm run test:auth && npm run test:auctions && npm run test:realtime",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run build && npm run test:web && npm run test:api && npm run test:runtime && npm run test:db && npm run test:http && npm run test:auth && npm run test:auctions && npm run test:realtime",
     "check:container": "docker build --progress=plain --target checks -f apps/api/Dockerfile .",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "npm run build --workspace=@holobid/contracts && npm run typecheck --workspaces",
@@ -45,7 +45,8 @@
     "test:e2e": "npm run build:api && node apps/api/scripts/test-database.mjs --web-e2e",
     "build:web:deploy": "node scripts/build-web-deploy.mjs",
     "test:web:deploy": "node scripts/web-deploy-smoke.mjs",
-    "test:web:release": "node scripts/web-release-acceptance.mjs"
+    "test:web:release": "node scripts/web-release-acceptance.mjs",
+    "test:runtime": "node --test apps/api/scripts/http-control.test.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

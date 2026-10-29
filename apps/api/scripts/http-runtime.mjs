@@ -13,6 +13,8 @@ import { fileURLToPath, URL } from 'node:url';
 import pg from 'pg';
 import { io } from 'socket.io-client';
 
+import { writeHttpControl } from './http-control.mjs';
+
 export async function runtime() {
   assert.equal(
     process.env.HOLOBID_ISOLATED_DATABASE_TEST,
@@ -63,7 +65,7 @@ export async function runtime() {
   const state = { now: Date.now(), provider: 'fixture' };
   const configure = (patch) => {
     Object.assign(state, patch);
-    writeFileSync(env.HOLOBID_HTTP_CONTROL, JSON.stringify(state));
+    writeHttpControl(env.HOLOBID_HTTP_CONTROL, state);
   };
 
   configure({});

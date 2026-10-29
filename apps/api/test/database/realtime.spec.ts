@@ -59,18 +59,23 @@ describe('Real Socket.IO clients against the HTTP API', () => {
     });
   }
 
-  async function connect(user?: Account, options: Record<string, unknown> = {}) {
+  async function createClient(options: Record<string, unknown> = {}) {
     const client = io(await h.app.getUrl(), {
       transports: ['websocket'],
       autoConnect: false,
       reconnection: false,
       extraHeaders: { Origin: 'http://localhost:5173' },
-      auth: user ? { token: user.token } : {},
+      auth: {},
       ...options,
     });
 
     clients.push(client);
 
+    return client;
+  }
+
+  async function connect(user?: Account, options: Record<string, unknown> = {}) {
+    const client = await createClient({ auth: user ? { token: user.token } : {}, ...options });
     const connected = event(client, 'connect');
 
     client.connect();
@@ -80,16 +85,7 @@ describe('Real Socket.IO clients against the HTTP API', () => {
   }
 
   async function rejectConnection(options: Record<string, unknown>) {
-    const client = io(await h.app.getUrl(), {
-      transports: ['websocket'],
-      autoConnect: false,
-      reconnection: false,
-      extraHeaders: { Origin: 'http://localhost:5173' },
-      ...options,
-    });
-
-    clients.push(client);
-
+    const client = await createClient(options);
     const failed = event<Error>(client, 'connect_error');
 
     client.connect();
@@ -391,17 +387,37 @@ describe('Real Socket.IO clients against the HTTP API', () => {
   it('expires a valid short-remaining-lifetime JWT and prevents private access afterwards', async () => {
     const jwt = new JwtService();
     const claims = jwt.decode(a.token) as Record<string, unknown>;
-    const exp = Math.floor(Date.now() / 1000) + 1;
+    // Leave at least two full seconds for the real database-backed handshake.
+    const exp = Math.floor(Date.now() / 1000) + 3;
     const token = jwt.sign(
       { ...claims, iat: exp - 900, exp },
       { secret: Buffer.from(process.env.JWT_SECRET!, 'base64url'), algorithm: 'HS256' },
     );
-    const client = await connect({ ...a, token });
-    const expired = event(client, 'auth.expired');
-    const disconnected = event(client, 'disconnect');
+    const client = await createClient({ auth: { token } });
+    // Observe the whole lifecycle before opening the socket, including immediate events.
+    const lifecycle = Promise.all([
+      event(client, 'connect'),
+      event(client, 'auth.expired', 5000),
+      event(client, 'disconnect', 5000),
+    ]);
 
-    expect(await expired).toEqual({ reason: 'TOKEN_EXPIRED' });
-    await disconnected;
+    client.connect();
+
+    const [, expired] = await lifecycle;
+
+    expect(expired).toEqual({ reason: 'TOKEN_EXPIRED' });
+    expect(client.connected).toBe(false);
+
+    // A timer may wake just before the wall-clock JWT boundary. Reconnection tests
+    // token expiry, so wait for exp itself rather than assuming disconnect proves it.
+    while (Date.now() < exp * 1000) {
+      await delay(exp * 1000 - Date.now());
+    }
+
+    await request(h.app.getHttpServer())
+      .get('/api/v1/wallet')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(401);
     expect((await rejectConnection({ auth: { token } })).message).toBe('UNAUTHORIZED');
   });
   it('rechecks persisted sessions before private emission', async () => {
